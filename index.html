@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0a0608" />
+<title>Yharnam Nights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- Heads-up display -->
+<div id="hud" class="hud hidden">
+  <div class="hud-top">
+    <div class="hp-wrap">
+      <div class="hp-bar"><div id="hpFill" class="hp-fill"></div></div>
+      <div id="hpText" class="hp-text">100 / 100</div>
+    </div>
+    <div id="timer" class="timer">00:00</div>
+    <button id="pauseBtn" class="icon-btn" aria-label="Pause">
+      <svg viewBox="0 0 24 24" width="22" height="22"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+    </button>
+  </div>
+  <div class="hud-stats">
+    <span class="stat"><span class="stat-icon">✦</span> Lv <span id="lvlText">1</span></span>
+    <span class="stat"><span class="stat-icon">☠</span> <span id="killText">0</span></span>
+    <span class="stat"><span class="stat-icon">◈</span> <span id="echoText">0</span></span>
+  </div>
+  <div class="xp-wrap">
+    <div class="xp-bar"><div id="xpFill" class="xp-fill"></div></div>
+  </div>
+  <div id="weaponSlots" class="slot-row"></div>
+  <div id="passiveSlots" class="slot-row passive"></div>
+</div>
+
+<!-- Title screen -->
+<div id="title" class="overlay">
+  <div class="title-bg"></div>
+  <div class="title-content">
+    <div class="title-flourish">— A Hunter's Dream —</div>
+    <h1 class="game-title">Yharnam<br>Nights</h1>
+    <p class="title-sub">A scourge upon this benighted city. Endure.</p>
+    <div class="hunters">
+      <button class="hunter-card selected" data-hunter="hunter">
+        <div class="hunter-portrait portrait-hunter"></div>
+        <div class="hunter-name">The Hunter</div>
+        <div class="hunter-desc">Saw Cleaver. Balanced, swift.</div>
+      </button>
+      <button class="hunter-card" data-hunter="foreigner">
+        <div class="hunter-portrait portrait-foreigner"></div>
+        <div class="hunter-name">The Foreigner</div>
+        <div class="hunter-desc">Hunter's Pistol. Frail, deadly at range.</div>
+      </button>
+      <button class="hunter-card" data-hunter="executioner">
+        <div class="hunter-portrait portrait-executioner"></div>
+        <div class="hunter-name">The Executioner</div>
+        <div class="hunter-desc">Threaded Cane. Hardy, sweeping reach.</div>
+      </button>
+    </div>
+    <button id="startBtn" class="btn btn-primary">Awaken</button>
+    <div class="title-hint">Drag the left side of the screen to move. Weapons strike on their own.</div>
+  </div>
+</div>
+
+<!-- Touch joystick (rendered by JS) -->
+<div id="joystick" class="joystick hidden">
+  <div class="joystick-base"></div>
+  <div class="joystick-knob" id="joystickKnob"></div>
+</div>
+
+<!-- Level up modal -->
+<div id="levelUp" class="overlay hidden">
+  <div class="level-content">
+    <div class="level-flourish">— Insight Gained —</div>
+    <h2 class="level-title">Choose a Boon</h2>
+    <div id="upgradeChoices" class="upgrade-choices"></div>
+    <button id="rerollBtn" class="btn btn-ghost">Reroll <span class="reroll-cost">— uses left: <span id="rerollCount">1</span></span></button>
+  </div>
+</div>
+
+<!-- Pause menu -->
+<div id="pauseMenu" class="overlay hidden">
+  <div class="pause-content">
+    <div class="title-flourish">— Paused —</div>
+    <h2 class="level-title">A Moment's Rest</h2>
+    <div class="pause-stats">
+      <div><span>Time</span><b id="pauseTime">00:00</b></div>
+      <div><span>Level</span><b id="pauseLevel">1</b></div>
+      <div><span>Slain</span><b id="pauseKills">0</b></div>
+    </div>
+    <button id="resumeBtn" class="btn btn-primary">Resume the Hunt</button>
+    <button id="quitBtn" class="btn btn-ghost">Abandon</button>
+  </div>
+</div>
+
+<!-- Game over -->
+<div id="gameOver" class="overlay hidden">
+  <div class="gameover-content">
+    <div class="death-flourish">YOU DIED</div>
+    <div id="deathReason" class="death-reason">Devoured in the streets of Yharnam.</div>
+    <div class="pause-stats">
+      <div><span>Survived</span><b id="goTime">00:00</b></div>
+      <div><span>Level</span><b id="goLevel">1</b></div>
+      <div><span>Slain</span><b id="goKills">0</b></div>
+      <div><span>Echoes</span><b id="goEcho">0</b></div>
+    </div>
+    <button id="retryBtn" class="btn btn-primary">Return to Dream</button>
+  </div>
+</div>
+
+<!-- Victory -->
+<div id="victory" class="overlay hidden">
+  <div class="gameover-content">
+    <div class="victory-flourish">— DAYBREAK —</div>
+    <div class="death-reason">The night recedes. You have endured.</div>
+    <div class="pause-stats">
+      <div><span>Survived</span><b id="vTime">30:00</b></div>
+      <div><span>Level</span><b id="vLevel">1</b></div>
+      <div><span>Slain</span><b id="vKills">0</b></div>
+      <div><span>Echoes</span><b id="vEcho">0</b></div>
+    </div>
+    <button id="victoryBtn" class="btn btn-primary">A New Dream</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
