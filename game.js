@@ -683,10 +683,9 @@ function spawnEnemy(typeId, x, y, mods = {}) {
   });
 }
 
-function spawnEnemyAroundPlayer(typeId, ringMin = 380, ringMax = 460) {
-  const a = Math.random() * TAU;
-  const r = rand(ringMin, ringMax);
-  spawnEnemy(typeId, player.x + Math.cos(a) * r, player.y + Math.sin(a) * r);
+function spawnEnemyAroundPlayer(typeId) {
+  const pt = offscreenSpawnPos(120);
+  spawnEnemy(typeId, pt.x, pt.y);
 }
 
 // ============================================================
@@ -1279,41 +1278,49 @@ function grantLanternReward(l) {
 // ============================================================
 const pots = [];
 
+const POT_TARGET = 18;
+
+function tryPlacePot(offscreen) {
+  const pt = offscreen ? offscreenSpawnPos(180)
+                       : { x: player.x + Math.cos(Math.random() * TAU) * rand(160, 380),
+                           y: player.y + Math.sin(Math.random() * TAU) * rand(160, 380) };
+  // Don't drop a pot inside a structure — would be unbreakable.
+  if (structureAt(pt.x, pt.y)) return false;
+  pots.push({
+    x: pt.x, y: pt.y,
+    type: pick(['urn', 'urn', 'crate']),
+    bornAt: game.time,
+  });
+  return true;
+}
+
 function spawnPotsInitial() {
-  // Seed a starting cluster so the first walk feels rewarded.
-  for (let i = 0; i < 8; i++) {
-    const a = Math.random() * TAU;
-    const r = rand(180, 460);
-    pots.push({
-      x: player.x + Math.cos(a) * r,
-      y: player.y + Math.sin(a) * r,
-      type: pick(['urn', 'urn', 'crate']),
-      bornAt: 0,
-    });
+  for (let i = 0; i < 5; i++) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      if (tryPlacePot(false)) break;
+    }
   }
 }
 
 function updatePots(dt) {
+  // Target-population spawning — fast top-up while below the target, idle once
+  // it's hit. Keeps pot density even instead of bursty.
   game.potCd -= dt;
   if (game.potCd <= 0) {
-    game.potCd = rand(6, 12);
-    if (pots.length < 24) {
-      const a = Math.random() * TAU;
-      const r = rand(280, 580);
-      pots.push({
-        x: player.x + Math.cos(a) * r,
-        y: player.y + Math.sin(a) * r,
-        type: pick(['urn', 'urn', 'crate']),
-        bornAt: game.time,
-      });
+    if (pots.length < POT_TARGET) {
+      game.potCd = rand(2, 4);
+      tryPlacePot(true);
+    } else {
+      game.potCd = rand(8, 14);
     }
   }
+  const cullR = Math.max(W, H) + 400;
   for (let i = pots.length - 1; i >= 0; i--) {
     const p = pots[i];
     if (dist2(p.x, p.y, player.x, player.y) < 17 * 17) {
       breakPot(p);
       pots.splice(i, 1);
-    } else if (dist2(p.x, p.y, player.x, player.y) > 1300 * 1300) {
+    } else if (dist2(p.x, p.y, player.x, player.y) > cullR * cullR) {
       pots.splice(i, 1);
     }
   }
@@ -1417,6 +1424,17 @@ function openChest(c) {
 }
 
 // ============================================================
+// Spawn ring helper — picks a point just past the visible viewport.
+// ============================================================
+const MAX_ENEMIES = 90;
+
+function offscreenSpawnPos(extra = 80, angle = null) {
+  const a = angle == null ? Math.random() * TAU : angle;
+  const r = Math.max(W, H) / 2 + 50 + Math.random() * extra;
+  return { x: player.x + Math.cos(a) * r, y: player.y + Math.sin(a) * r };
+}
+
+// ============================================================
 // Structures — buildings, walls, graveyards. Block paths and bullets.
 // ============================================================
 const structures = [];
@@ -1440,23 +1458,43 @@ function structuresOverlap(x, y, w, h, padding = 30) {
   return false;
 }
 
-function trySpawnStructure(distMin, distMax) {
-  const kind = pick(['house', 'house', 'manor', 'gravePlot', 'wall', 'wall', 'fence', 'fence']);
-  const a = Math.random() * TAU;
-  const r = rand(distMin, distMax);
-  const x = player.x + Math.cos(a) * r;
-  const y = player.y + Math.sin(a) * r;
+function trySpawnStructure(offscreen) {
+  const kind = pick(['house', 'house', 'manor', 'wall', 'wall', 'fence', 'fence', 'gravePlot']);
+  const pt = offscreen ? offscreenSpawnPos(220) : { x: player.x + Math.cos(Math.random() * TAU) * rand(180, 380),
+                                                    y: player.y + Math.sin(Math.random() * TAU) * rand(180, 380) };
+  if (kind === 'gravePlot') return tryPlaceGraveyard(pt.x, pt.y);
   const dims = structureDims(kind);
-  if (structuresOverlap(x, y, dims.w, dims.h)) return false;
-  structures.push({ kind, x, y, w: dims.w, h: dims.h, seed: Math.random() });
+  if (structuresOverlap(pt.x, pt.y, dims.w, dims.h)) return false;
+  structures.push({ kind, x: pt.x, y: pt.y, w: dims.w, h: dims.h, seed: Math.random() });
+  return true;
+}
+
+// Larger graveyard built from four fence segments with a gap in the south
+// wall, plus an interior decor pass. Walls collide individually so the
+// hunter and enemies can step through the entrance.
+function tryPlaceGraveyard(cx, cy) {
+  const W_ = 220, H_ = 170, T = 6, ENTRANCE = 44;
+  if (structuresOverlap(cx, cy, W_, H_, 36)) return false;
+  const seed = Math.random();
+  // Decor pushed first so it renders under the walls.
+  structures.push({ kind: 'graveDecor', x: cx, y: cy, w: W_, h: H_, solid: false, seed });
+  // North wall
+  structures.push({ kind: 'graveWall', x: cx, y: cy - H_/2 + T/2, w: W_, h: T, seed });
+  // East and west walls
+  structures.push({ kind: 'graveWall', x: cx - W_/2 + T/2, y: cy, w: T, h: H_, seed });
+  structures.push({ kind: 'graveWall', x: cx + W_/2 - T/2, y: cy, w: T, h: H_, seed });
+  // South wall split around the entrance
+  const segW = (W_ - ENTRANCE) / 2;
+  structures.push({ kind: 'graveWall', x: cx - W_/2 + segW/2, y: cy + H_/2 - T/2, w: segW, h: T, seed });
+  structures.push({ kind: 'graveWall', x: cx + W_/2 - segW/2, y: cy + H_/2 - T/2, w: segW, h: T, seed });
   return true;
 }
 
 function spawnStructuresInitial() {
-  // Mix of close and mid-range so the world reads as inhabited from frame one.
-  for (let i = 0; i < 10; i++) {
+  // Lighter initial seed so the opening doesn't feel cluttered.
+  for (let i = 0; i < 4; i++) {
     for (let attempt = 0; attempt < 12; attempt++) {
-      if (trySpawnStructure(220, 700)) break;
+      if (trySpawnStructure(true)) break;
     }
   }
 }
@@ -1465,16 +1503,17 @@ function updateStructures(dt) {
   game.structureCd -= dt;
   if (game.structureCd <= 0) {
     game.structureCd = rand(10, 18);
-    if (structures.length < 36) {
+    if (structures.length < 60) {
       for (let attempt = 0; attempt < 6; attempt++) {
-        if (trySpawnStructure(520, 880)) break;
+        if (trySpawnStructure(true)) break;
       }
     }
   }
-  // cull distant structures
+  // cull when far enough from the camera that they're guaranteed offscreen
+  const cullR = Math.max(W, H) + 600;
   for (let i = structures.length - 1; i >= 0; i--) {
     const o = structures[i];
-    if (dist2(o.x, o.y, player.x, player.y) > 1700 * 1700) {
+    if (dist2(o.x, o.y, player.x, player.y) > cullR * cullR) {
       structures.splice(i, 1);
     }
   }
@@ -1482,6 +1521,7 @@ function updateStructures(dt) {
 
 function structureAt(x, y) {
   for (const o of structures) {
+    if (o.solid === false) continue;
     if (Math.abs(x - o.x) < o.w / 2 && Math.abs(y - o.y) < o.h / 2) return o;
   }
   return null;
@@ -1489,6 +1529,7 @@ function structureAt(x, y) {
 
 function resolveAgainstStructures(e, r, zeroVel) {
   for (const o of structures) {
+    if (o.solid === false) continue;
     const dx = e.x - o.x;
     const dy = e.y - o.y;
     const halfW = o.w / 2 + r;
@@ -1626,7 +1667,8 @@ function spawnDirector(dt) {
   // ~50% slower spawn ramp than before — fewer but tougher enemies overall.
   let rate = 0.6 + Math.min(t / 18, 7);
   rate *= 1 + Math.min(t / 300, 0.6);
-  game.spawnAcc += rate * dt;
+  // Cap accumulator so we don't dump a burst when the enemy cap clears.
+  game.spawnAcc = Math.min(game.spawnAcc + rate * dt, 6);
   while (game.spawnAcc >= 1) {
     game.spawnAcc -= 1;
     spawnByTime(t);
@@ -1678,6 +1720,7 @@ function weightedPick(table) {
 }
 
 function spawnByTime(t) {
+  if (enemies.length >= MAX_ENEMIES) return;
   let table;
   for (const e of SPAWN_TABLES) {
     if (t < e[0]) { table = e[1]; break; }
@@ -1685,19 +1728,15 @@ function spawnByTime(t) {
   const id = weightedPick(table);
   if (id === 'rats') {
     // Rat swarm — smaller groups than before so they don't overwhelm the table.
-    const a = Math.random() * TAU;
-    const r = Math.max(W, H) * 0.62 + rand(40, 100);
-    const cx = player.x + Math.cos(a) * r;
-    const cy = player.y + Math.sin(a) * r;
-    const n = randi(3, 6);
+    const pt = offscreenSpawnPos(160);
+    const n = Math.min(randi(3, 6), MAX_ENEMIES - enemies.length);
     for (let i = 0; i < n; i++) {
-      spawnEnemy('plagueRat', cx + rand(-30, 30), cy + rand(-30, 30));
+      spawnEnemy('plagueRat', pt.x + rand(-30, 30), pt.y + rand(-30, 30));
     }
     return;
   }
-  const a = Math.random() * TAU;
-  const r = Math.max(W, H) * 0.62 + rand(20, 80);
-  spawnEnemy(id, player.x + Math.cos(a) * r, player.y + Math.sin(a) * r);
+  const pt = offscreenSpawnPos(120);
+  spawnEnemy(id, pt.x, pt.y);
 }
 
 // ============================================================
@@ -1995,9 +2034,16 @@ function updateEnemies(dt) {
     if (dist2(e.x, e.y, player.x, player.y) < minR * minR) {
       damagePlayer(e.dmg);
     }
-    // despawn far away non-bosses
-    if (!e.boss && dist2(e.x, e.y, player.x, player.y) > 1200 * 1200) {
-      enemies.splice(i, 1);
+    // Recycle wanderers — anything non-boss that has drifted well off-screen
+    // teleports to a fresh offscreen ring rather than being culled. Keeps the
+    // pressure constant and lets elites finish their fight even if you ran.
+    if (!e.boss) {
+      const cullR = Math.max(W, H) + 220;
+      if (dist2(e.x, e.y, player.x, player.y) > cullR * cullR) {
+        const pt = offscreenSpawnPos(120);
+        e.x = pt.x; e.y = pt.y;
+        e.knockX = 0; e.knockY = 0;
+      }
     }
   }
 }
@@ -2182,12 +2228,72 @@ function render() {
 
 function drawStructures() {
   for (const o of structures) {
-    if (o.kind === 'house')          drawHouse(o);
-    else if (o.kind === 'manor')     drawManor(o);
-    else if (o.kind === 'gravePlot') drawGravePlot(o);
-    else if (o.kind === 'wall')      drawStoneWall(o);
-    else if (o.kind === 'fence')     drawIronFence(o);
+    if (o.kind === 'house')           drawHouse(o);
+    else if (o.kind === 'manor')      drawManor(o);
+    else if (o.kind === 'graveDecor') drawGraveInterior(o);
+    else if (o.kind === 'graveWall')  drawIronFence(o);
+    else if (o.kind === 'wall')       drawStoneWall(o);
+    else if (o.kind === 'fence')      drawIronFence(o);
   }
+}
+
+function drawGraveInterior(o) {
+  const hw = o.w / 2, hh = o.h / 2;
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  // disturbed earth
+  ctx.fillStyle = 'rgba(20,15,10,0.6)';
+  ctx.fillRect(-hw + 4, -hh + 4, o.w - 8, o.h - 8);
+  // a darker ribbon of path leading from the entrance gap up the centre
+  ctx.fillStyle = 'rgba(30,22,16,0.7)';
+  ctx.fillRect(-12, -hh + 4, 24, o.h - 8);
+  // headstones in two rows on either side of the path
+  const rows = 2;
+  const stonesPerRow = Math.max(2, Math.floor((o.w - 60) / 30));
+  for (let row = 0; row < rows; row++) {
+    const ry = lerp(-hh + 26, hh - 30, (row + 0.5) / rows);
+    const rowSeed = o.seed * 7 + row * 13;
+    for (let i = 0; i < stonesPerRow; i++) {
+      const sxLeft = lerp(-hw + 18, -22, (i + 0.5) / stonesPerRow);
+      const sxRight = lerp(22, hw - 18, (i + 0.5) / stonesPerRow);
+      drawHeadstone(sxLeft, ry, rowSeed + i * 17);
+      drawHeadstone(sxRight, ry, rowSeed + i * 23 + 3);
+    }
+  }
+  // pale fog wisp drifting inside the plot
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const wispDx = Math.sin(game.time * 0.4 + o.seed * 5) * 14;
+  const wispDy = Math.cos(game.time * 0.3 + o.seed * 5) * 8;
+  const wisp = ctx.createRadialGradient(wispDx, wispDy, 0, wispDx, wispDy, hw * 0.85);
+  wisp.addColorStop(0, 'rgba(180,200,220,0.08)');
+  wisp.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = wisp;
+  ctx.fillRect(-hw, -hh, o.w, o.h);
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawHeadstone(sx, sy, seed) {
+  const tilt = Math.sin(seed * 9) * 0.18;
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(tilt);
+  ctx.fillStyle = '#4a4438';
+  ctx.beginPath();
+  ctx.moveTo(-5, 9);
+  ctx.lineTo(-5, -4);
+  ctx.bezierCurveTo(-5, -10, 5, -10, 5, -4);
+  ctx.lineTo(5, 9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#1a1814';
+  ctx.lineWidth = 1; ctx.stroke();
+  // chiseled cross
+  ctx.fillStyle = '#1a1814';
+  ctx.fillRect(-0.6, -3, 1.2, 6);
+  ctx.fillRect(-2, -1.5, 4, 1);
+  ctx.restore();
 }
 
 function drawHouse(o) {
@@ -2284,72 +2390,6 @@ function drawManor(o) {
   ctx.beginPath();
   ctx.arc(0, hh - 22, 10, Math.PI, 0, true);
   ctx.stroke();
-  ctx.restore();
-}
-
-function drawGravePlot(o) {
-  const hw = o.w / 2, hh = o.h / 2;
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  // disturbed earth
-  ctx.fillStyle = 'rgba(20,15,10,0.55)';
-  ctx.fillRect(-hw, -hh, o.w, o.h);
-  // iron fence — top, bottom, sides as bars
-  ctx.strokeStyle = '#2a2a30';
-  ctx.lineWidth = 1.4;
-  // horizontal rails
-  ctx.beginPath();
-  ctx.moveTo(-hw, -hh + 2); ctx.lineTo(hw, -hh + 2);
-  ctx.moveTo(-hw, hh - 2);  ctx.lineTo(hw, hh - 2);
-  ctx.stroke();
-  // vertical bars top and bottom (thin and many)
-  ctx.fillStyle = '#1a1a20';
-  for (let x = -hw + 4; x <= hw - 4; x += 6) {
-    ctx.fillRect(x - 0.5, -hh, 1, 6);
-    ctx.fillRect(x - 0.5, hh - 6, 1, 6);
-  }
-  // side fences
-  for (let y = -hh + 4; y <= hh - 4; y += 6) {
-    ctx.fillRect(-hw, y - 0.5, 6, 1);
-    ctx.fillRect(hw - 6, y - 0.5, 6, 1);
-  }
-  // corner posts
-  ctx.fillStyle = '#0a0a0a';
-  for (const [cx, cy] of [[-hw, -hh], [hw - 4, -hh], [-hw, hh - 4], [hw - 4, hh - 4]]) {
-    ctx.fillRect(cx, cy, 4, 4);
-  }
-  // headstones inside
-  const stoneCount = Math.max(2, Math.floor(o.w / 26));
-  for (let i = 0; i < stoneCount; i++) {
-    const sx = lerp(-hw + 18, hw - 18, (i + 0.5) / stoneCount);
-    const tilt = Math.sin((o.seed + i) * 9) * 0.12;
-    ctx.save();
-    ctx.translate(sx, 0);
-    ctx.rotate(tilt);
-    ctx.fillStyle = '#4a4438';
-    ctx.beginPath();
-    ctx.moveTo(-5, 8);
-    ctx.lineTo(-5, -4);
-    ctx.bezierCurveTo(-5, -10, 5, -10, 5, -4);
-    ctx.lineTo(5, 8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#1a1814'; ctx.lineWidth = 1; ctx.stroke();
-    // a chiseled cross
-    ctx.fillStyle = '#1a1814';
-    ctx.fillRect(-0.6, -3, 1.2, 6);
-    ctx.fillRect(-2, -1.5, 4, 1);
-    ctx.restore();
-  }
-  // pale fog wisp (visual only, doesn't affect collision)
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const wisp = ctx.createRadialGradient(0, 0, 0, 0, 0, hw);
-  wisp.addColorStop(0, 'rgba(180,200,220,0.06)');
-  wisp.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = wisp;
-  ctx.fillRect(-hw, -hh, o.w, o.h);
-  ctx.restore();
   ctx.restore();
 }
 
