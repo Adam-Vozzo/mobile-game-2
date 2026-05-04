@@ -435,6 +435,7 @@ function updateParticles(dt) {
 // ============================================================
 const pickups = [];
 const PICKUP_TYPES = {
+  echoMote:   { color: '#5e9ec4', glow: '#9cc8e6', xp: 0.2, size: 3, shape: 'diamond' },
   echoSmall:  { color: '#7ec8ff', glow: '#8edcff', xp: 1,   size: 4, shape: 'diamond' },
   echoMed:    { color: '#3a8fe6', glow: '#5fb0ff', xp: 5,   size: 5, shape: 'diamond' },
   echoLarge:  { color: '#a560ff', glow: '#c98aff', xp: 25,  size: 7, shape: 'diamond' },
@@ -1596,14 +1597,20 @@ function killEnemy(e) {
   game.kills++;
   spawnSplat(e.x, e.y, 10 + e.r * 0.6);
   emitBlood(e.x, e.y, 12, null, 1.5);
-  // Regular kills only drop XP when the budget says so. Bosses and elites
-  // always drop their guaranteed loot below.
-  if (e.def.xp && !e.boss && !e.elite && game.xpDropAcc >= 1) {
-    game.xpDropAcc -= 1;
-    let xpType = e.def.xp;
-    if (xpType === 'echoSmall' && Math.random() < 0.06) xpType = 'echoMed';
-    if (xpType === 'echoMed'   && Math.random() < 0.07) xpType = 'echoLarge';
-    spawnPickup(xpType, e.x, e.y);
+  // Regular kills always drop something. The XP budget decides whether it's
+  // a real echo (small/med/large) or just a tiny mote — motes are nearly
+  // worthless individually but they keep killing feeling rewarding and they
+  // merge upward via the gem-combiner pass.
+  if (e.def.xp && !e.boss && !e.elite) {
+    if (game.xpDropAcc >= 1) {
+      game.xpDropAcc -= 1;
+      let xpType = e.def.xp;
+      if (xpType === 'echoSmall' && Math.random() < 0.06) xpType = 'echoMed';
+      if (xpType === 'echoMed'   && Math.random() < 0.07) xpType = 'echoLarge';
+      spawnPickup(xpType, e.x, e.y);
+    } else {
+      spawnPickup('echoMote', e.x, e.y);
+    }
   }
   const r = Math.random();
   if (e.boss) {
@@ -1744,8 +1751,10 @@ function spawnByTime(t) {
 // ============================================================
 function update(dt) {
   readKeyboard();
-  // XP drop budget — rate ramps from 0.7/s at start to ~3.2/s past 4 minutes.
-  const xpRate = 0.7 + Math.min(game.time / 90, 2.5);
+  // XP drop budget — rate ramps from 0.5/s at start to ~3.0/s past 4 minutes.
+  // Slightly under what it was before motes existed, since motes contribute a
+  // small trickle of XP on every other kill.
+  const xpRate = 0.5 + Math.min(game.time / 100, 2.5);
   game.xpDropAcc = Math.min(game.xpDropAcc + dt * xpRate, 4); // small cap so we don't dump on a kill streak
   updatePlayer(dt);
   updateWeapons(dt);
@@ -1805,6 +1814,7 @@ function mergeGems(dt) {
     }
   }
 
+  tryMerge('echoMote', 'echoSmall');
   tryMerge('echoSmall', 'echoMed');
   tryMerge('echoMed', 'echoLarge');
   tryMerge('echoLarge', 'echoCrest');
