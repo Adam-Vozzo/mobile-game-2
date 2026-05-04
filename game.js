@@ -1233,16 +1233,16 @@ const lanterns = [];
 const LANTERN_LIFETIME = 75;
 
 function spawnLantern() {
-  const a = Math.random() * TAU;
-  const r = rand(560, 920);
-  lanterns.push({
-    x: player.x + Math.cos(a) * r,
-    y: player.y + Math.sin(a) * r,
-    bornAt: game.time,
-    expires: game.time + LANTERN_LIFETIME,
-    pulse: 0,
-  });
-  sfx.pickup();
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const a = Math.random() * TAU;
+    const r = rand(560, 920);
+    const x = player.x + Math.cos(a) * r;
+    const y = player.y + Math.sin(a) * r;
+    if (structureAt(x, y)) continue;
+    lanterns.push({ x, y, bornAt: game.time, expires: game.time + LANTERN_LIFETIME, pulse: 0 });
+    sfx.pickup();
+    return;
+  }
 }
 
 function updateLanterns(dt) {
@@ -1375,6 +1375,13 @@ function chooseSmartLoot() {
 const chests = [];
 
 function spawnChest(x, y, tier) {
+  // Nudge the chest out of any structure it landed inside so the hunter can
+  // actually open it.
+  for (let attempt = 0; attempt < 6 && structureAt(x, y); attempt++) {
+    const a = Math.random() * TAU;
+    x += Math.cos(a) * 28;
+    y += Math.sin(a) * 28;
+  }
   chests.push({ x, y, tier, bornAt: game.time, pulse: 0 });
 }
 
@@ -1410,6 +1417,97 @@ function openChest(c) {
 }
 
 // ============================================================
+// Structures — buildings, walls, graveyards. Block paths and bullets.
+// ============================================================
+const structures = [];
+
+function structureDims(kind) {
+  if (kind === 'house')     return { w: 80, h: 64 };
+  if (kind === 'manor')     return { w: 140, h: 100 };
+  if (kind === 'gravePlot') return { w: 110, h: 80 };
+  if (kind === 'wall')      return Math.random() < 0.5 ? { w: 140, h: 18 } : { w: 18, h: 140 };
+  if (kind === 'fence')     return Math.random() < 0.5 ? { w: 120, h: 12 } : { w: 12, h: 120 };
+  return { w: 40, h: 40 };
+}
+
+function structuresOverlap(x, y, w, h, padding = 30) {
+  // never spawn on top of the player or another structure
+  if (Math.abs(x - player.x) < w / 2 + 80 && Math.abs(y - player.y) < h / 2 + 80) return true;
+  for (const o of structures) {
+    if (Math.abs(x - o.x) < w / 2 + o.w / 2 + padding &&
+        Math.abs(y - o.y) < h / 2 + o.h / 2 + padding) return true;
+  }
+  return false;
+}
+
+function trySpawnStructure(distMin, distMax) {
+  const kind = pick(['house', 'house', 'manor', 'gravePlot', 'wall', 'wall', 'fence', 'fence']);
+  const a = Math.random() * TAU;
+  const r = rand(distMin, distMax);
+  const x = player.x + Math.cos(a) * r;
+  const y = player.y + Math.sin(a) * r;
+  const dims = structureDims(kind);
+  if (structuresOverlap(x, y, dims.w, dims.h)) return false;
+  structures.push({ kind, x, y, w: dims.w, h: dims.h, seed: Math.random() });
+  return true;
+}
+
+function spawnStructuresInitial() {
+  // Mix of close and mid-range so the world reads as inhabited from frame one.
+  for (let i = 0; i < 10; i++) {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      if (trySpawnStructure(220, 700)) break;
+    }
+  }
+}
+
+function updateStructures(dt) {
+  game.structureCd -= dt;
+  if (game.structureCd <= 0) {
+    game.structureCd = rand(10, 18);
+    if (structures.length < 36) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (trySpawnStructure(520, 880)) break;
+      }
+    }
+  }
+  // cull distant structures
+  for (let i = structures.length - 1; i >= 0; i--) {
+    const o = structures[i];
+    if (dist2(o.x, o.y, player.x, player.y) > 1700 * 1700) {
+      structures.splice(i, 1);
+    }
+  }
+}
+
+function structureAt(x, y) {
+  for (const o of structures) {
+    if (Math.abs(x - o.x) < o.w / 2 && Math.abs(y - o.y) < o.h / 2) return o;
+  }
+  return null;
+}
+
+function resolveAgainstStructures(e, r, zeroVel) {
+  for (const o of structures) {
+    const dx = e.x - o.x;
+    const dy = e.y - o.y;
+    const halfW = o.w / 2 + r;
+    const halfH = o.h / 2 + r;
+    if (Math.abs(dx) < halfW && Math.abs(dy) < halfH) {
+      const overlapX = halfW - Math.abs(dx);
+      const overlapY = halfH - Math.abs(dy);
+      if (overlapX < overlapY) {
+        e.x = o.x + (dx >= 0 ? halfW : -halfW);
+        if (zeroVel) e.vx = 0;
+      } else {
+        e.y = o.y + (dy >= 0 ? halfH : -halfH);
+        if (zeroVel) e.vy = 0;
+      }
+    }
+  }
+}
+
+// ============================================================
 // Game state
 // ============================================================
 const game = {
@@ -1427,6 +1525,7 @@ const game = {
   gemMergeCd: 0,
   eliteCd: 60,
   potCd: 0,
+  structureCd: 0,
   // Deterministic XP drop budget. Accumulates at xpDropRate per second,
   // a regular kill spends 1 to drop a gem. Decouples XP gain from kill count.
   xpDropAcc: 1,
@@ -1620,6 +1719,7 @@ function update(dt) {
   updateLanterns(dt);
   updatePots(dt);
   updateChests(dt);
+  updateStructures(dt);
   mergeGems(dt);
   spawnDirector(dt);
   cam.x = lerp(cam.x, player.x, 0.18);
@@ -1680,6 +1780,7 @@ function updatePlayer(dt) {
   player.vy = lerp(player.vy, targetVy, 0.25);
   player.x += player.vx * dt;
   player.y += player.vy * dt;
+  resolveAgainstStructures(player, 9, false);
   if (Math.abs(player.vx) > 8) player.faceDir = player.vx > 0 ? 1 : -1;
   player.iframes = Math.max(0, player.iframes - dt);
   player.hitFlash = Math.max(0, player.hitFlash - dt);
@@ -1710,6 +1811,12 @@ function updateProjectiles(dt) {
       p.life -= dt;
       p.trail.push({ x: p.x, y: p.y, a: 1 });
       if (p.trail.length > 6) p.trail.shift();
+      // shatter on a structure (wall, building) — bullets can't pass through
+      if (structureAt(p.x, p.y)) {
+        emitSpark(p.x, p.y, 5, '#f5e6c0');
+        projectiles.splice(i, 1);
+        continue;
+      }
       // collision
       for (const e of enemies) {
         if (e.hp <= 0 || p.hitSet.has(e)) continue;
@@ -1776,6 +1883,12 @@ function updateEnemyShots(dt) {
     const s = enemyShots[i];
     s.x += s.vx * dt; s.y += s.vy * dt;
     s.life -= dt;
+    // structures block enemy fire too — gives the hunter usable cover
+    if (structureAt(s.x, s.y)) {
+      emitSpark(s.x, s.y, 4, '#c0c8d8');
+      enemyShots.splice(i, 1);
+      continue;
+    }
     // Shield catches bullets at a wider radius than the player body.
     const shield = shieldState();
     const catchR = shield ? 26 : (10 + s.r);
@@ -1874,6 +1987,9 @@ function updateEnemies(dt) {
     e.y += (vy + e.knockY) * dt;
     e.knockX *= Math.pow(0.001, dt);
     e.knockY *= Math.pow(0.001, dt);
+    // collide with buildings/walls — pushes the enemy out and can leave them
+    // hugging a wall, which the player can exploit as cover.
+    resolveAgainstStructures(e, e.r, true);
     // contact damage to player
     const minR = e.r + 11;
     if (dist2(e.x, e.y, player.x, player.y) < minR * minR) {
@@ -2044,6 +2160,7 @@ function render() {
 
   drawSplats();
   drawAoes();
+  drawStructures();
   drawLanterns();
   drawPots();
   drawChests();
@@ -2061,6 +2178,254 @@ function render() {
   drawVignette();
   drawLanternWaypoints();
   drawGrain();
+}
+
+function drawStructures() {
+  for (const o of structures) {
+    if (o.kind === 'house')          drawHouse(o);
+    else if (o.kind === 'manor')     drawManor(o);
+    else if (o.kind === 'gravePlot') drawGravePlot(o);
+    else if (o.kind === 'wall')      drawStoneWall(o);
+    else if (o.kind === 'fence')     drawIronFence(o);
+  }
+}
+
+function drawHouse(o) {
+  const hw = o.w / 2, hh = o.h / 2;
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  // ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.ellipse(0, hh + 4, hw + 6, 6, 0, 0, TAU); ctx.fill();
+  // wall mass
+  ctx.fillStyle = '#2a1a14';
+  ctx.fillRect(-hw, -hh, o.w, o.h);
+  ctx.strokeStyle = '#1a0a08';
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(-hw, -hh, o.w, o.h);
+  // upper roof band drawn inside the AABB so collision reads true
+  ctx.fillStyle = '#0e0608';
+  ctx.beginPath();
+  ctx.moveTo(-hw, -hh);
+  ctx.lineTo(0, -hh + hh * 0.35);
+  ctx.lineTo(hw, -hh);
+  ctx.lineTo(hw, -hh + hh * 0.35);
+  ctx.lineTo(-hw, -hh + hh * 0.35);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // mortar / plank lines
+  ctx.strokeStyle = 'rgba(20,10,8,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(-hw, 0); ctx.lineTo(hw, 0);
+  ctx.stroke();
+  // door
+  ctx.fillStyle = '#0a0608';
+  ctx.fillRect(-7, hh - 18, 14, 18);
+  ctx.strokeStyle = '#5a3828'; ctx.lineWidth = 1;
+  ctx.strokeRect(-7, hh - 18, 14, 18);
+  // door knocker
+  ctx.fillStyle = '#a07a48';
+  ctx.fillRect(-1, hh - 11, 2, 2);
+  // warm-lit windows
+  const litGlow = 0.45 + Math.sin((o.seed + game.time * 0.6) * 4) * 0.1;
+  ctx.fillStyle = `rgba(245,180,90,${litGlow})`;
+  ctx.fillRect(-hw + 12, -hh * 0.15, 12, 10);
+  ctx.fillRect(hw - 24, -hh * 0.15, 12, 10);
+  ctx.strokeStyle = '#7a5a40'; ctx.lineWidth = 1;
+  ctx.strokeRect(-hw + 12, -hh * 0.15, 12, 10);
+  ctx.strokeRect(hw - 24, -hh * 0.15, 12, 10);
+  // window cross-bars
+  ctx.beginPath();
+  ctx.moveTo(-hw + 18, -hh * 0.15); ctx.lineTo(-hw + 18, -hh * 0.15 + 10);
+  ctx.moveTo(hw - 18, -hh * 0.15); ctx.lineTo(hw - 18, -hh * 0.15 + 10);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawManor(o) {
+  const hw = o.w / 2, hh = o.h / 2;
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.beginPath(); ctx.ellipse(0, hh + 5, hw + 8, 7, 0, 0, TAU); ctx.fill();
+  // body
+  ctx.fillStyle = '#241410';
+  ctx.fillRect(-hw, -hh, o.w, o.h);
+  ctx.strokeStyle = '#0e0608'; ctx.lineWidth = 1.6;
+  ctx.strokeRect(-hw, -hh, o.w, o.h);
+  // upper storey roof band
+  ctx.fillStyle = '#0a0608';
+  ctx.fillRect(-hw, -hh, o.w, hh * 0.35);
+  // central tower silhouette
+  ctx.fillStyle = '#1a0e0a';
+  ctx.fillRect(-12, -hh, 24, hh * 0.55);
+  ctx.strokeRect(-12, -hh, 24, hh * 0.55);
+  // string of windows — two rows
+  const litGlow = 0.4 + Math.sin((o.seed + game.time * 0.5) * 3) * 0.08;
+  ctx.fillStyle = `rgba(245,180,90,${litGlow})`;
+  ctx.strokeStyle = '#5a3828'; ctx.lineWidth = 1;
+  for (let row = 0; row < 2; row++) {
+    const wy = -hh * 0.18 + row * (hh * 0.45);
+    for (let col = 0; col < 4; col++) {
+      const wx = -hw + 16 + col * (o.w - 32) / 3 - 5;
+      ctx.fillRect(wx, wy, 10, 12);
+      ctx.strokeRect(wx, wy, 10, 12);
+    }
+  }
+  // grand door
+  ctx.fillStyle = '#0a0608';
+  ctx.beginPath();
+  ctx.rect(-10, hh - 22, 20, 22);
+  ctx.fill();
+  ctx.strokeStyle = '#7a5a40'; ctx.lineWidth = 1.2;
+  ctx.stroke();
+  // door arch detail
+  ctx.beginPath();
+  ctx.arc(0, hh - 22, 10, Math.PI, 0, true);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGravePlot(o) {
+  const hw = o.w / 2, hh = o.h / 2;
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  // disturbed earth
+  ctx.fillStyle = 'rgba(20,15,10,0.55)';
+  ctx.fillRect(-hw, -hh, o.w, o.h);
+  // iron fence — top, bottom, sides as bars
+  ctx.strokeStyle = '#2a2a30';
+  ctx.lineWidth = 1.4;
+  // horizontal rails
+  ctx.beginPath();
+  ctx.moveTo(-hw, -hh + 2); ctx.lineTo(hw, -hh + 2);
+  ctx.moveTo(-hw, hh - 2);  ctx.lineTo(hw, hh - 2);
+  ctx.stroke();
+  // vertical bars top and bottom (thin and many)
+  ctx.fillStyle = '#1a1a20';
+  for (let x = -hw + 4; x <= hw - 4; x += 6) {
+    ctx.fillRect(x - 0.5, -hh, 1, 6);
+    ctx.fillRect(x - 0.5, hh - 6, 1, 6);
+  }
+  // side fences
+  for (let y = -hh + 4; y <= hh - 4; y += 6) {
+    ctx.fillRect(-hw, y - 0.5, 6, 1);
+    ctx.fillRect(hw - 6, y - 0.5, 6, 1);
+  }
+  // corner posts
+  ctx.fillStyle = '#0a0a0a';
+  for (const [cx, cy] of [[-hw, -hh], [hw - 4, -hh], [-hw, hh - 4], [hw - 4, hh - 4]]) {
+    ctx.fillRect(cx, cy, 4, 4);
+  }
+  // headstones inside
+  const stoneCount = Math.max(2, Math.floor(o.w / 26));
+  for (let i = 0; i < stoneCount; i++) {
+    const sx = lerp(-hw + 18, hw - 18, (i + 0.5) / stoneCount);
+    const tilt = Math.sin((o.seed + i) * 9) * 0.12;
+    ctx.save();
+    ctx.translate(sx, 0);
+    ctx.rotate(tilt);
+    ctx.fillStyle = '#4a4438';
+    ctx.beginPath();
+    ctx.moveTo(-5, 8);
+    ctx.lineTo(-5, -4);
+    ctx.bezierCurveTo(-5, -10, 5, -10, 5, -4);
+    ctx.lineTo(5, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#1a1814'; ctx.lineWidth = 1; ctx.stroke();
+    // a chiseled cross
+    ctx.fillStyle = '#1a1814';
+    ctx.fillRect(-0.6, -3, 1.2, 6);
+    ctx.fillRect(-2, -1.5, 4, 1);
+    ctx.restore();
+  }
+  // pale fog wisp (visual only, doesn't affect collision)
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const wisp = ctx.createRadialGradient(0, 0, 0, 0, 0, hw);
+  wisp.addColorStop(0, 'rgba(180,200,220,0.06)');
+  wisp.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = wisp;
+  ctx.fillRect(-hw, -hh, o.w, o.h);
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawStoneWall(o) {
+  const hw = o.w / 2, hh = o.h / 2;
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.ellipse(0, hh + 2, hw + 2, 3, 0, 0, TAU); ctx.fill();
+  // stone body
+  ctx.fillStyle = '#2a261c';
+  ctx.fillRect(-hw, -hh, o.w, o.h);
+  ctx.strokeStyle = '#0a0808'; ctx.lineWidth = 1.2;
+  ctx.strokeRect(-hw, -hh, o.w, o.h);
+  // mortar pattern — horizontal walls get vertical stone seams, vertical walls horizontal
+  ctx.strokeStyle = 'rgba(10,8,6,0.7)';
+  ctx.lineWidth = 0.8;
+  if (o.w > o.h) {
+    for (let x = -hw + 18; x < hw - 4; x += 22) {
+      ctx.beginPath(); ctx.moveTo(x, -hh); ctx.lineTo(x, hh); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(-hw, 0); ctx.lineTo(hw, 0); ctx.stroke();
+  } else {
+    for (let y = -hh + 18; y < hh - 4; y += 22) {
+      ctx.beginPath(); ctx.moveTo(-hw, y); ctx.lineTo(hw, y); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(0, -hh); ctx.lineTo(0, hh); ctx.stroke();
+  }
+  // moss/highlight
+  ctx.fillStyle = 'rgba(80,72,40,0.18)';
+  ctx.fillRect(-hw + 2, -hh + 2, o.w - 4, 1);
+  ctx.restore();
+}
+
+function drawIronFence(o) {
+  const hw = o.w / 2, hh = o.h / 2;
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  if (o.w > o.h) {
+    ctx.beginPath(); ctx.ellipse(0, hh + 2, hw, 2, 0, 0, TAU); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.ellipse(0, hh + 2, hw + 2, 2, 0, 0, TAU); ctx.fill();
+  }
+  // post-and-rail
+  ctx.fillStyle = '#1a1a22';
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 0.8;
+  if (o.w > o.h) {
+    // horizontal rail spans
+    ctx.fillRect(-hw, -2, o.w, 1.6);
+    ctx.fillRect(-hw, 1, o.w, 1.6);
+    // vertical bars with fleur tips
+    for (let x = -hw + 3; x <= hw - 3; x += 7) {
+      ctx.fillRect(x - 0.5, -hh, 1, o.h);
+      // fleur
+      ctx.beginPath();
+      ctx.moveTo(x - 1.5, -hh);
+      ctx.lineTo(x, -hh - 2);
+      ctx.lineTo(x + 1.5, -hh);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // end posts
+    ctx.fillRect(-hw - 1, -hh, 3, o.h + 2);
+    ctx.fillRect(hw - 2, -hh, 3, o.h + 2);
+  } else {
+    ctx.fillRect(-2, -hh, 1.6, o.h);
+    ctx.fillRect(1, -hh, 1.6, o.h);
+    for (let y = -hh + 3; y <= hh - 3; y += 7) {
+      ctx.fillRect(-hw, y - 0.5, o.w, 1);
+    }
+    ctx.fillRect(-hw, -hh - 1, o.w + 2, 3);
+    ctx.fillRect(-hw, hh - 2, o.w + 2, 3);
+  }
+  ctx.restore();
 }
 
 function drawPots() {
@@ -3109,7 +3474,10 @@ function startGame(hunterId) {
   lanterns.length = 0;
   pots.length = 0;
   chests.length = 0;
+  structures.length = 0;
   game.potCd = 0;
+  game.structureCd = 0;
+  spawnStructuresInitial();
   spawnPotsInitial();
   upgradeQueue.length = 0;
   levelUpOpen = false;
