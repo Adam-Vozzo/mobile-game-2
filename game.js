@@ -1307,7 +1307,10 @@ function breakPot(p) {
   emitSmoke(p.x, p.y, 4, 'rgba(50,40,30,0.5)');
   shakeScreen(2);
   sfx.hit();
-  spawnPickup(chooseSmartLoot(), p.x, p.y);
+  // Most pots are empty. The few that hold something favour what the
+  // hunter actually needs right now — never echoes (those come from kills).
+  const drop = chooseSmartLoot();
+  if (drop) spawnPickup(drop, p.x, p.y);
 }
 
 function chooseSmartLoot() {
@@ -1320,15 +1323,15 @@ function chooseSmartLoot() {
   let xpGems = 0;
   for (const pk of pickups) if (PICKUP_TYPES[pk.type].xp) xpGems++;
 
-  const pool = [
-    { type: 'echoSmall', weight: 1.0 },
-    { type: 'echoMed',   weight: 0.55 },
-  ];
-  if (hpRatio < 0.35)      pool.push({ type: 'heart',  weight: 6 });
-  else if (hpRatio < 0.65) pool.push({ type: 'heart',  weight: 1.2 });
-  if (nearbyEnemies > 14)  pool.push({ type: 'bomb',   weight: 4 });
-  if (xpGems > 25)         pool.push({ type: 'magnet', weight: 3 });
-  if (game.time > 240)     pool.push({ type: 'echoLarge', weight: 0.25 });
+  // 'null' = empty pot. The base weight is high so most breaks return nothing.
+  const pool = [{ type: null, weight: 8 }];
+  if (hpRatio < 0.35)       pool.push({ type: 'heart',  weight: 6 });
+  else if (hpRatio < 0.65)  pool.push({ type: 'heart',  weight: 1.5 });
+  else                      pool.push({ type: 'heart',  weight: 0.4 });
+  if (nearbyEnemies > 14)   pool.push({ type: 'bomb',   weight: 4 });
+  else                      pool.push({ type: 'bomb',   weight: 0.3 });
+  if (xpGems > 25)          pool.push({ type: 'magnet', weight: 3 });
+  else                      pool.push({ type: 'magnet', weight: 0.4 });
 
   let total = 0;
   for (const e of pool) total += e.weight;
@@ -1337,7 +1340,7 @@ function chooseSmartLoot() {
     if (r < e.weight) return e.type;
     r -= e.weight;
   }
-  return 'echoSmall';
+  return null;
 }
 
 // ============================================================
