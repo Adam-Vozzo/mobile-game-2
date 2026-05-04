@@ -974,22 +974,21 @@ const WEAPONS = {
     desc: 'Forbidden glass that turns aside the unworthy.',
     max: 8,
     levels: [
-      { desc: 'A shimmer briefly wards off bullets and softens blows.' },
+      { desc: 'A shimmer briefly grants full immunity from harm.' },
       { desc: 'Shield rises more often.' },
       { desc: 'Shield lasts longer.' },
-      { desc: 'Bullets shatter against the glass for damage.' },
-      { desc: 'Greater damage reduction.' },
-      { desc: 'Shield rises more often. Shatter sparks fan out.' },
+      { desc: 'Bullets shatter and fly back at the unworthy.' },
+      { desc: 'Shield rises more often.' },
       { desc: 'Shield lasts longer.' },
-      { desc: 'A near-permanent ward — almost no respite from the glass.' },
+      { desc: 'Shield rises more often.' },
+      { desc: 'A near-permanent ward — barely a moment of respite.' },
     ],
     update(dt, w) {
       const lv = w.level;
-      const cdMax = Math.max(2.0, (8.5 - lv * 0.6)) * player.cdMul;
-      const durMax = (2.2 + lv * 0.35) * player.durationMul;
+      const cdMax = Math.max(4.0, (9.5 - lv * 0.4)) * player.cdMul;
+      const durMax = (1.8 + lv * 0.3) * player.durationMul;
       w.state.lv = lv;
       w.state.deflect = lv >= 4;
-      w.state.reduce = lv >= 5 ? 0.55 : 0.4;
       if (w.state.cd === undefined) {
         w.state.cd = cdMax;
         w.state.dur = 0;
@@ -1461,14 +1460,19 @@ function shieldState() {
 
 function damagePlayer(amount) {
   if (player.iframes > 0) return;
-  const shield = shieldState();
-  if (shield) amount *= (1 - shield.reduce);
+  if (shieldState()) {
+    // Bulwark grants full immunity while raised. Brief iframes so a single
+    // crowd hit doesn't spam shield pings.
+    player.iframes = 0.25;
+    emitSpark(player.x, player.y, 6, '#f5e6c0');
+    sfx.swing();
+    return;
+  }
   player.hp -= amount;
   player.hitFlash = 0.3;
   player.iframes = 0.6;
-  shakeScreen(shield ? 3 : 6);
-  emitBlood(player.x, player.y, shield ? 4 : 8);
-  if (shield) emitSpark(player.x, player.y, 6, '#f5e6c0');
+  shakeScreen(6);
+  emitBlood(player.x, player.y, 8);
   sfx.hurt();
   if (player.hp <= 0) {
     player.hp = 0;
