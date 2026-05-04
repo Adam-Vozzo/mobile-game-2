@@ -826,21 +826,25 @@ const WEAPONS = {
         const u = s.t / s.max;
         ctx.save();
         ctx.translate(player.x, player.y);
-        ctx.rotate(0);
-        const dir = s.dir;
-        ctx.strokeStyle = `rgba(245,230,192,${1 - u})`;
-        ctx.lineWidth = 5 - u * 4;
-        ctx.beginPath();
+        if (s.dir < 0) ctx.scale(-1, 1);
         const startA = -s.arc / 2;
         const endA = startA + s.arc * u;
+        // bright outer arc
+        ctx.beginPath();
         ctx.arc(0, 0, s.reach, startA, endA, false);
-        if (dir < 0) {
-          ctx.scale(-1, 1);
-        }
+        ctx.strokeStyle = `rgba(245,230,192,${1 - u})`;
+        ctx.lineWidth = 5 - u * 4;
         ctx.stroke();
+        // blood-trail under-stroke
         ctx.strokeStyle = `rgba(196,30,58,${0.6 * (1 - u)})`;
         ctx.lineWidth = 2;
         ctx.stroke();
+        // leading-edge gleam
+        const leadA = endA;
+        const lx = Math.cos(leadA) * s.reach;
+        const ly = Math.sin(leadA) * s.reach;
+        ctx.fillStyle = `rgba(255,240,200,${0.8 * (1 - u)})`;
+        ctx.beginPath(); ctx.arc(lx, ly, 4, 0, TAU); ctx.fill();
         ctx.restore();
       }
     },
