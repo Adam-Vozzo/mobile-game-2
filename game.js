@@ -403,6 +403,11 @@ function spawnDamageNumber(x, y, n, crit = false) {
     crit,
   });
 }
+function spawnFloatingLabel(x, y, text, color = '#f5d98a', life = 1.4) {
+  damageNumbers.push({
+    x, y, vy: -28, life, max: life, text, color, big: true, gravity: 12,
+  });
+}
 
 const splats = []; // permanent-ish blood marks on the ground
 function spawnSplat(x, y, r = 18) {
@@ -426,7 +431,7 @@ function updateParticles(dt) {
     d.life -= dt;
     if (d.life <= 0) { damageNumbers.splice(i, 1); continue; }
     d.y += d.vy * dt;
-    d.vy += 60 * dt;
+    d.vy += (d.gravity != null ? d.gravity : 60) * dt;
   }
 }
 
@@ -1204,6 +1209,7 @@ function grantInsight(n) {
   const earned = Math.max(1, Math.round(n * (1 + meta.perks.thrift * 0.20)));
   meta.totalInsight += earned;
   saveMeta();
+  return earned;
 }
 
 function buyPerk(id) {
@@ -2105,9 +2111,20 @@ function collectPickup(p) {
     if (p.type === 'echoLarge' || p.type === 'echoCrest') sfx.pickupBig(); else sfx.pickup();
     game.echoes += def.xp;
   } else if (def.insight) {
-    grantInsight(def.insight);
+    const earned = grantInsight(def.insight);
     sfx.pickupBig();
-    emitSpark(player.x, player.y, 14, '#f5d98a');
+    // Distinct gold burst — wider and longer than a regular pickup spark.
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * TAU;
+      const sp = 70 + Math.random() * 40;
+      particles.push({
+        type: 'spark', x: player.x, y: player.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.6, max: 0.6, size: 2.2, color: '#fff5cc',
+      });
+    }
+    emitSpark(player.x, player.y, 6, '#f5d98a');
+    spawnFloatingLabel(player.x, player.y - 18, '◈ +' + (earned || 1) + ' INSIGHT');
   } else if (def.heal) {
     player.hp = Math.min(player.maxHp, player.hp + def.heal * player.maxHp);
     sfx.pickupBig();
@@ -3288,16 +3305,24 @@ function drawParticles() {
 }
 
 function drawDamageNumbers() {
-  ctx.font = '700 13px Cinzel, serif';
   ctx.textAlign = 'center';
   for (const d of damageNumbers) {
     const u = d.life / d.max;
     ctx.globalAlpha = clamp(u * 1.3, 0, 1);
-    ctx.fillStyle = d.crit ? '#ffea88' : '#f5e6c0';
+    if (d.big) {
+      ctx.font = '700 15px Cinzel, serif';
+      ctx.fillStyle = d.color || '#f5d98a';
+      ctx.shadowColor = d.color || '#f5d98a';
+      ctx.shadowBlur = 8;
+    } else {
+      ctx.font = '700 13px Cinzel, serif';
+      ctx.fillStyle = d.crit ? '#ffea88' : '#f5e6c0';
+    }
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 3;
     ctx.strokeText(d.text, d.x, d.y);
     ctx.fillText(d.text, d.x, d.y);
+    if (d.big) ctx.shadowBlur = 0;
   }
   ctx.globalAlpha = 1;
   ctx.textAlign = 'left';
