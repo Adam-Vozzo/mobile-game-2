@@ -435,9 +435,10 @@ function updateParticles(dt) {
 // ============================================================
 const pickups = [];
 const PICKUP_TYPES = {
-  echoSmall:  { color: '#7ec8ff', glow: '#8edcff', xp: 1,  size: 4 },
-  echoMed:    { color: '#3a8fe6', glow: '#5fb0ff', xp: 5,  size: 5 },
-  echoLarge:  { color: '#a560ff', glow: '#c98aff', xp: 25, size: 7 },
+  echoSmall:  { color: '#7ec8ff', glow: '#8edcff', xp: 1,   size: 4, shape: 'diamond' },
+  echoMed:    { color: '#3a8fe6', glow: '#5fb0ff', xp: 5,   size: 5, shape: 'diamond' },
+  echoLarge:  { color: '#a560ff', glow: '#c98aff', xp: 25,  size: 7, shape: 'diamond' },
+  echoCrest:  { color: '#3ce0c8', glow: '#a0f0e0', xp: 125, size: 10, shape: 'star' },
   heart:      { color: '#c41e3a', glow: '#ff4060', heal: 0.3, size: 6 },
   magnet:     { color: '#c9a961', glow: '#f5d98a', magnet: true, size: 6 },
   bomb:       { color: '#222', glow: '#ff6020', bomb: true, size: 7 },
@@ -1596,7 +1597,7 @@ function mergeGems(dt) {
   game.gemMergeCd -= dt;
   if (game.gemMergeCd > 0) return;
   game.gemMergeCd = 0.6;
-  if (pickups.length < 80) return;
+  if (pickups.length < 60) return;
 
   function tryMerge(type, upType) {
     const candidates = [];
@@ -1634,6 +1635,7 @@ function mergeGems(dt) {
 
   tryMerge('echoSmall', 'echoMed');
   tryMerge('echoMed', 'echoLarge');
+  tryMerge('echoLarge', 'echoCrest');
 }
 
 function updatePlayer(dt) {
@@ -2284,17 +2286,39 @@ function drawPickups() {
     ctx.fillStyle = def.color;
     ctx.beginPath();
     if (def.xp) {
-      // gem shape
       const r = def.size;
-      ctx.moveTo(0, -r);
-      ctx.lineTo(r, 0);
-      ctx.lineTo(0, r);
-      ctx.lineTo(-r, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = def.glow;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      if (def.shape === 'star') {
+        // Six-pointed star — distinct silhouette for top-tier echoes,
+        // plus a slow rotation so the rarity reads at a glance.
+        const r2 = r * 0.45;
+        const spin = game.time * 0.6;
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * TAU - Math.PI / 2 + spin;
+          const rr = i % 2 === 0 ? r : r2;
+          const x = Math.cos(a) * rr;
+          const y = Math.sin(a) * rr;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = def.glow;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        // bright core
+        ctx.fillStyle = def.glow;
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.25, 0, TAU); ctx.fill();
+      } else {
+        ctx.moveTo(0, -r);
+        ctx.lineTo(r, 0);
+        ctx.lineTo(0, r);
+        ctx.lineTo(-r, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = def.glow;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
     } else if (def.heal) {
       // heart
       const r = def.size;
