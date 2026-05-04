@@ -322,11 +322,12 @@ function buildBgPattern() {
 buildBgPattern();
 
 function drawWorldBg() {
+  // Fill exactly the visible viewport instead of 4x. CanvasPattern shifts
+  // with the translate so the cobbles still scroll correctly with the camera.
   ctx.save();
   ctx.fillStyle = bgPattern;
-  // Translate pattern into world space so it scrolls with the camera
   ctx.translate(W / 2 - cam.x, H / 2 - cam.y);
-  ctx.fillRect(cam.x - W, cam.y - H, W * 2, H * 2);
+  ctx.fillRect(cam.x - W / 2, cam.y - H / 2, W, H);
   ctx.restore();
 }
 
