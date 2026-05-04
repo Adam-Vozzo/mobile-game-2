@@ -3494,7 +3494,7 @@ function updateHud() {
   }
   ui.lvlText.textContent = player.level;
   ui.killText.textContent = game.kills;
-  ui.echoText.textContent = game.echoes;
+  ui.echoText.textContent = Math.floor(game.echoes);
   // slots
   const wHtml = [];
   for (let i = 0; i < 6; i++) {
