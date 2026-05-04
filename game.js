@@ -27,6 +27,9 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
 let DPR = 1;
 let W = 0, H = 0;
+// Declared up here so resize() can null it without hitting a temporal-dead-
+// zone reference error when called during initial setup.
+let vignetteCache = null;
 
 function resize() {
   const w = window.innerWidth;
@@ -346,7 +349,8 @@ function drawWorldBg() {
 }
 
 // Vignette is static — bake to an offscreen canvas, blit each frame.
-let vignetteCache = null;
+// (vignetteCache is declared up near the canvas setup so resize() can clear
+// it without a temporal-dead-zone error during initial script load.)
 function buildVignette() {
   vignetteCache = document.createElement('canvas');
   vignetteCache.width = W;
