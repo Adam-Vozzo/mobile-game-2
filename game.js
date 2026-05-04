@@ -260,6 +260,14 @@ function camApply() {
   ctx.translate(W / 2 - cam.x + sx, H / 2 - cam.y + sy);
 }
 
+// Viewport culling — skip drawing things that aren't on the visible canvas.
+// Big speed-up on large screens with crowds.
+function inView(x, y, margin) {
+  const dx = x - cam.x, dy = y - cam.y;
+  const hw = W / 2 + margin, hh = H / 2 + margin;
+  return dx > -hw && dx < hw && dy > -hh && dy < hh;
+}
+
 // ============================================================
 // World (background tiles, fog)
 // ============================================================
@@ -2372,6 +2380,8 @@ function drawNightCycle() {
 
 function drawStructures() {
   for (const o of structures) {
+    // Cull with a margin large enough to cover the manor's footprint.
+    if (!inView(o.x, o.y, Math.max(o.w, o.h))) continue;
     if (o.kind === 'house')           drawHouse(o);
     else if (o.kind === 'manor')      drawManor(o);
     else if (o.kind === 'graveDecor') drawGraveInterior(o);
@@ -2616,6 +2626,7 @@ function drawPots() {
   // Pots are static scenery — no wobble, cool palette to separate from
   // warm-toned enemies, smaller silhouettes than any mob.
   for (const p of pots) {
+    if (!inView(p.x, p.y, 20)) continue;
     ctx.save();
     ctx.translate(p.x, p.y);
     // flat ground shadow (wider than tall — reads as a sitting object)
@@ -2830,6 +2841,7 @@ function drawLanternWaypoints() {
 
 function drawSplats() {
   for (const s of splats) {
+    if (!inView(s.x, s.y, s.r)) continue;
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate(s.rot);
@@ -2864,6 +2876,7 @@ function drawAoes() {
 
 function drawPickups() {
   for (const p of pickups) {
+    if (!inView(p.x, p.y, 30)) continue;
     const def = PICKUP_TYPES[p.type];
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -2944,6 +2957,7 @@ function drawPickups() {
 
 function drawProjectiles() {
   for (const p of projectiles) {
+    if (!inView(p.x, p.y, 60)) continue;
     if (p.kind === 'bullet') {
       ctx.save();
       ctx.translate(p.x, p.y);
@@ -2981,6 +2995,7 @@ function drawProjectiles() {
 
 function drawEnemyShots() {
   for (const s of enemyShots) {
+    if (!inView(s.x, s.y, 30)) continue;
     ctx.save();
     ctx.shadowColor = '#c0c8d8';
     ctx.shadowBlur = 6;
@@ -3002,6 +3017,7 @@ function drawWeaponEffects() {
 function drawEnemies() {
   for (const e of enemies) {
     if (e.hp <= 0) continue;
+    if (!inView(e.x, e.y, 60)) continue;
     drawEnemy(e);
   }
 }
@@ -3400,6 +3416,7 @@ function drawPlayer() {
 
 function drawParticles() {
   for (const p of particles) {
+    if (!inView(p.x, p.y, 40)) continue;
     const u = p.life / p.max;
     if (p.type === 'blood') {
       ctx.fillStyle = p.color;
@@ -3427,6 +3444,7 @@ function drawParticles() {
 function drawDamageNumbers() {
   ctx.textAlign = 'center';
   for (const d of damageNumbers) {
+    if (!inView(d.x, d.y, 30)) continue;
     const u = d.life / d.max;
     ctx.globalAlpha = clamp(u * 1.3, 0, 1);
     if (d.big) {
@@ -3738,7 +3756,7 @@ function onPlayerDeath() {
   ui.goTime.textContent = fmtTime(game.time);
   ui.goLevel.textContent = player.level;
   ui.goKills.textContent = game.kills;
-  ui.goEcho.textContent = game.echoes;
+  ui.goEcho.textContent = Math.floor(game.echoes);
   ui.hud.classList.add('hidden');
   ui.gameOver.classList.remove('hidden');
 }
@@ -3754,7 +3772,7 @@ function onVictory() {
   ui.vTime.textContent = fmtTime(game.time);
   ui.vLevel.textContent = player.level;
   ui.vKills.textContent = game.kills;
-  ui.vEcho.textContent = game.echoes;
+  ui.vEcho.textContent = Math.floor(game.echoes);
   ui.hud.classList.add('hidden');
   ui.victory.classList.remove('hidden');
 }
