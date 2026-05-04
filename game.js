@@ -1492,8 +1492,21 @@ function structuresOverlap(x, y, w, h, padding = 30) {
 
 function trySpawnStructure(offscreen) {
   const kind = pick(['house', 'house', 'manor', 'wall', 'wall', 'fence', 'fence', 'gravePlot']);
-  const pt = offscreen ? offscreenSpawnPos(220) : { x: player.x + Math.cos(Math.random() * TAU) * rand(180, 380),
-                                                    y: player.y + Math.sin(Math.random() * TAU) * rand(180, 380) };
+  // Bias offscreen spawns toward the direction of travel so a hunter walking
+  // in one direction doesn't outrun the structure system. 70% chance to
+  // land in a 180° arc centred on the velocity vector.
+  let angle = null;
+  if (offscreen) {
+    const sp = Math.hypot(player.vx, player.vy);
+    if (sp > 30 && Math.random() < 0.7) {
+      const move = Math.atan2(player.vy, player.vx);
+      angle = move + (Math.random() - 0.5) * Math.PI;
+    }
+  }
+  const pt = offscreen
+    ? offscreenSpawnPos(220, angle)
+    : { x: player.x + Math.cos(Math.random() * TAU) * rand(180, 380),
+        y: player.y + Math.sin(Math.random() * TAU) * rand(180, 380) };
   if (kind === 'gravePlot') return tryPlaceGraveyard(pt.x, pt.y);
   const dims = structureDims(kind);
   if (structuresOverlap(pt.x, pt.y, dims.w, dims.h)) return false;
@@ -1534,10 +1547,13 @@ function spawnStructuresInitial() {
 function updateStructures(dt) {
   game.structureCd -= dt;
   if (game.structureCd <= 0) {
-    game.structureCd = rand(10, 18);
+    game.structureCd = rand(4, 8);
     if (structures.length < 60) {
-      for (let attempt = 0; attempt < 6; attempt++) {
-        if (trySpawnStructure(true)) break;
+      // Try twice per cycle so a steady walking pace doesn't outrun spawning.
+      for (let n = 0; n < 2; n++) {
+        for (let attempt = 0; attempt < 6; attempt++) {
+          if (trySpawnStructure(true)) break;
+        }
       }
     }
   }
