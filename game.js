@@ -3043,15 +3043,8 @@ function drawEnemy(e) {
     }
   }
 
-  // warm halo to lift the silhouette off the dark cobbles (anchored)
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, e.r * 1.6);
-  halo.addColorStop(0, e.def.halo || 'rgba(60,30,15,0.3)');
-  halo.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = halo;
-  ctx.fillRect(-e.r * 1.8, -e.r * 1.8, e.r * 3.6, e.r * 3.6);
-  ctx.restore();
+  // warm halo removed for performance — radial gradient + screen blend per
+  // enemy per frame was the heaviest single render cost.
 
   // contact shadow (anchored to ground, doesn't bob)
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
