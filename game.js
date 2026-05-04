@@ -486,11 +486,11 @@ const HUNTERS = {
     passiveDesc: 'Heavy garb softens incoming blows — 25% damage reduction.',
   },
   iosefka: {
-    name: 'Iosefka', hp: 150, speed: 142, weapon: 'sawCleaver',
+    name: 'Iosefka', hp: 150, speed: 142, weapon: 'torch',
     bonus: { speed: 0.95, dmg: 0.9, area: 1.05 },
     passive: 'physician',
     passiveName: "Physician's Pact",
-    passiveDesc: '+2.0 HP/sec regen, 10% lifesteal, hearts restore 50% more.',
+    passiveDesc: '+5 HP/sec regen, 10% lifesteal, hearts restore 50% more.',
   },
 };
 
@@ -583,7 +583,7 @@ function recomputeStats() {
     case 'vigil':     player.regen += 0.5; break;
     case 'marksman':  player.projDmgMul = 1.25; break;
     case 'stalwart':  player.dmgReduce = 0.25; break;
-    case 'physician': player.regen += 2.0; player.lifesteal = 0.10; player.healMul = 1.5; break;
+    case 'physician': player.regen += 5.0; player.lifesteal = 0.10; player.healMul = 1.5; break;
   }
   const apply = (m) => {
     if (m.dmg)       player.dmgMul *= m.dmg;
@@ -2278,9 +2278,37 @@ function render() {
 
   ctx.restore();
   drawFog();
+  drawNightCycle();
   drawVignette();
   drawLanternWaypoints();
   drawGrain();
+}
+
+// Subtle colour tint that shifts from sunset → midnight → sunrise across the
+// run. Drives mood without being so loud it interferes with readability.
+const NIGHT_STOPS = [
+  { t: 0.00, r:  92, g:  46, b:  32, a: 0.22 }, // sunset embers
+  { t: 0.18, r:  56, g:  34, b:  60, a: 0.26 }, // dusk
+  { t: 0.45, r:  16, g:  22, b:  46, a: 0.34 }, // deep night
+  { t: 0.62, r:  10, g:  18, b:  40, a: 0.36 }, // witching hour
+  { t: 0.85, r:  44, g:  28, b:  56, a: 0.26 }, // pre-dawn
+  { t: 1.00, r:  98, g:  56, b:  40, a: 0.22 }, // sunrise embers
+];
+
+function drawNightCycle() {
+  if (!game.running) return;
+  const u = clamp(game.time / game.victoryAt, 0, 1);
+  let i = 0;
+  while (i < NIGHT_STOPS.length - 1 && NIGHT_STOPS[i + 1].t < u) i++;
+  const a = NIGHT_STOPS[i];
+  const b = NIGHT_STOPS[Math.min(NIGHT_STOPS.length - 1, i + 1)];
+  const seg = (u - a.t) / Math.max(0.001, b.t - a.t);
+  const r = Math.round(lerp(a.r, b.r, seg));
+  const g = Math.round(lerp(a.g, b.g, seg));
+  const bl = Math.round(lerp(a.b, b.b, seg));
+  const al = lerp(a.a, b.a, seg);
+  ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + bl + ',' + al.toFixed(3) + ')';
+  ctx.fillRect(0, 0, W, H);
 }
 
 function drawStructures() {
@@ -3370,6 +3398,7 @@ const ui = {
   hpText: document.getElementById('hpText'),
   xpFill: document.getElementById('xpFill'),
   timer: document.getElementById('timer'),
+  moonIcon: document.getElementById('moonIcon'),
   lvlText: document.getElementById('lvlText'),
   killText: document.getElementById('killText'),
   echoText: document.getElementById('echoText'),
@@ -3456,6 +3485,13 @@ function updateHud() {
   ui.hpText.textContent = Math.ceil(player.hp) + ' / ' + Math.ceil(player.maxHp);
   ui.xpFill.style.width = clamp(player.xp / player.xpNeed, 0, 1) * 100 + '%';
   ui.timer.textContent = fmtTime(game.time);
+  if (ui.moonIcon) {
+    const cycleProg = clamp(game.time / game.victoryAt, 0, 1);
+    // 1.5 turns over the run — slow but visible. Plus a small idle drift so
+    // it doesn't look frozen in the very first seconds.
+    const angle = cycleProg * 540 + game.time * 0.6;
+    ui.moonIcon.style.transform = 'rotate(' + angle.toFixed(1) + 'deg)';
+  }
   ui.lvlText.textContent = player.level;
   ui.killText.textContent = game.kills;
   ui.echoText.textContent = game.echoes;
