@@ -461,6 +461,23 @@ const HUNTERS = {
   executioner: { name: 'The Executioner',hp: 130, speed: 138, weapon: 'threadedCane', bonus: { speed: 0.95, dmg: 1.0, area: 1.15 } },
 };
 
+// Distinct silhouettes per hunter — coat colour, hat shape, eye glow, and a
+// signature accessory drawn on top.
+const HUNTER_ART = {
+  hunter: {
+    coat: '#241410', trim: '#5a2818', skin: '#3a2418', eye: '#f5d98a',
+    hat: 'tricorne', hatColor: '#1a0e0a', accent: 'scarf',
+  },
+  foreigner: {
+    coat: '#1a1424', trim: '#3a3458', skin: '#5a4838', eye: '#80c0ff',
+    hat: 'tophat', hatColor: '#0a0a14', accent: 'pistol',
+  },
+  executioner: {
+    coat: '#2a1410', trim: '#5a1818', skin: '#241410', eye: '#ff5050',
+    hat: 'hood', hatColor: '#1a0608', accent: 'greatsword',
+  },
+};
+
 const player = {
   x: 0, y: 0, vx: 0, vy: 0,
   speed: 150,
@@ -600,22 +617,32 @@ const ENEMY_TYPES = {
 
 function spawnEnemy(typeId, x, y, mods = {}) {
   const def = ENEMY_TYPES[typeId];
+  // Promotion to elite (gold ring + reward chest). Bosses and intrinsic
+  // elites (cleric beast) skip the roll.
+  let promoted = false;
+  if (!def.boss && !def.elite && !mods.elite && game.time > 90 && Math.random() < 0.012) {
+    promoted = true;
+  }
+  const eliteScale = promoted ? { hp: 4.0, dmg: 1.5, r: 1.3, sp: 1.08 } : { hp: 1, dmg: 1, r: 1, sp: 1 };
+  const baseHp = (def.hp + (game.time * 0.4)) * (mods.hpMul || 1) * eliteScale.hp;
   enemies.push({
     type: typeId, def,
     x, y, vx: 0, vy: 0,
-    hp: (def.hp + (game.time * 0.4)) * (mods.hpMul || 1),
-    maxHp: (def.hp + (game.time * 0.4)) * (mods.hpMul || 1),
-    dmg: def.dmg * (mods.dmgMul || 1),
-    r: def.r * (mods.rMul || 1),
-    speed: def.speed * (mods.speedMul || 1) * rand(0.92, 1.08),
+    hp: baseHp,
+    maxHp: baseHp,
+    dmg: def.dmg * (mods.dmgMul || 1) * eliteScale.dmg,
+    r: def.r * (mods.rMul || 1) * eliteScale.r,
+    speed: def.speed * (mods.speedMul || 1) * rand(0.92, 1.08) * eliteScale.sp,
     flash: 0,
-    hitCdById: {},  // weaponInstanceId -> cooldown remaining
+    hitCdById: {},
     fireCd: def.fireRate ? rand(0, def.fireRate) : 0,
     boss: !!def.boss,
-    elite: !!def.elite,
+    elite: !!def.elite || promoted,
+    promoted,
     bornAt: game.time,
     knockX: 0, knockY: 0,
     aimNoise: rand(-0.2, 0.2),
+    walkPhase: Math.random() * TAU,
   });
 }
 
@@ -1222,6 +1249,138 @@ function grantLanternReward(l) {
 }
 
 // ============================================================
+// Breakable pots — scattered around the map, drop smart loot
+// ============================================================
+const pots = [];
+
+function spawnPotsInitial() {
+  // Seed a starting cluster so the first walk feels rewarded.
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * TAU;
+    const r = rand(180, 460);
+    pots.push({
+      x: player.x + Math.cos(a) * r,
+      y: player.y + Math.sin(a) * r,
+      type: pick(['urn', 'urn', 'crate', 'lantern']),
+      bornAt: 0, wobble: Math.random() * TAU,
+    });
+  }
+}
+
+function updatePots(dt) {
+  game.potCd -= dt;
+  if (game.potCd <= 0) {
+    game.potCd = rand(6, 12);
+    if (pots.length < 24) {
+      const a = Math.random() * TAU;
+      const r = rand(280, 580);
+      pots.push({
+        x: player.x + Math.cos(a) * r,
+        y: player.y + Math.sin(a) * r,
+        type: pick(['urn', 'urn', 'crate', 'lantern']),
+        bornAt: game.time, wobble: Math.random() * TAU,
+      });
+    }
+  }
+  for (let i = pots.length - 1; i >= 0; i--) {
+    const p = pots[i];
+    if (dist2(p.x, p.y, player.x, player.y) < 17 * 17) {
+      breakPot(p);
+      pots.splice(i, 1);
+    } else if (dist2(p.x, p.y, player.x, player.y) > 1300 * 1300) {
+      pots.splice(i, 1);
+    }
+  }
+}
+
+function breakPot(p) {
+  for (let i = 0; i < 10; i++) {
+    const a = Math.random() * TAU;
+    const sp = 60 + Math.random() * 120;
+    particles.push({
+      type: 'spark', x: p.x, y: p.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+      life: 0.55, max: 0.55, size: 2,
+      color: p.type === 'lantern' ? '#a07a48' : (p.type === 'crate' ? '#7a5a40' : '#5a4030'),
+    });
+  }
+  emitSmoke(p.x, p.y, 4, 'rgba(50,40,30,0.5)');
+  shakeScreen(2);
+  sfx.hit();
+  spawnPickup(chooseSmartLoot(), p.x, p.y);
+}
+
+function chooseSmartLoot() {
+  const hpRatio = player.hp / player.maxHp;
+  let nearbyEnemies = 0;
+  for (const e of enemies) {
+    if (e.hp <= 0) continue;
+    if (dist2(e.x, e.y, player.x, player.y) < 280 * 280) nearbyEnemies++;
+  }
+  let xpGems = 0;
+  for (const pk of pickups) if (PICKUP_TYPES[pk.type].xp) xpGems++;
+
+  const pool = [
+    { type: 'echoSmall', weight: 1.0 },
+    { type: 'echoMed',   weight: 0.55 },
+  ];
+  if (hpRatio < 0.35)      pool.push({ type: 'heart',  weight: 6 });
+  else if (hpRatio < 0.65) pool.push({ type: 'heart',  weight: 1.2 });
+  if (nearbyEnemies > 14)  pool.push({ type: 'bomb',   weight: 4 });
+  if (xpGems > 25)         pool.push({ type: 'magnet', weight: 3 });
+  if (game.time > 240)     pool.push({ type: 'echoLarge', weight: 0.25 });
+
+  let total = 0;
+  for (const e of pool) total += e.weight;
+  let r = Math.random() * total;
+  for (const e of pool) {
+    if (r < e.weight) return e.type;
+    r -= e.weight;
+  }
+  return 'echoSmall';
+}
+
+// ============================================================
+// Reward chests — dropped by elites (silver) and bosses (gold)
+// ============================================================
+const chests = [];
+
+function spawnChest(x, y, tier) {
+  chests.push({ x, y, tier, bornAt: game.time, pulse: 0 });
+}
+
+function updateChests(dt) {
+  for (let i = chests.length - 1; i >= 0; i--) {
+    const c = chests[i];
+    c.pulse += dt;
+    if (dist2(c.x, c.y, player.x, player.y) < 24 * 24) {
+      openChest(c);
+      chests.splice(i, 1);
+    }
+  }
+}
+
+function openChest(c) {
+  emitSpark(c.x, c.y, 30, c.tier === 'gold' ? '#f5d98a' : '#d8d8e0');
+  emitSmoke(c.x, c.y, 6);
+  shakeScreen(c.tier === 'gold' ? 8 : 4);
+  sfx.levelup();
+  if (c.tier === 'gold') {
+    upgradeQueue.push(true);
+    upgradeQueue.push(true);
+    for (let i = 0; i < 5; i++) spawnPickup('echoLarge', c.x + rand(-30, 30), c.y + rand(-30, 30));
+    spawnPickup('heart', c.x, c.y);
+    spawnPickup('magnet', c.x + 18, c.y + 6);
+    player.rerolls += 1;
+  } else {
+    upgradeQueue.push(true);
+    for (let i = 0; i < 3; i++) spawnPickup('echoMed', c.x + rand(-20, 20), c.y + rand(-20, 20));
+    if (Math.random() < 0.4) spawnPickup('heart', c.x, c.y);
+  }
+  if (!levelUpOpen) showLevelUp();
+}
+
+// ============================================================
 // Game state
 // ============================================================
 const game = {
@@ -1238,6 +1397,7 @@ const game = {
   lanternCd: 35,
   gemMergeCd: 0,
   eliteCd: 60,
+  potCd: 0,
 };
 
 // ============================================================
@@ -1264,31 +1424,30 @@ function killEnemy(e) {
   game.kills++;
   spawnSplat(e.x, e.y, 10 + e.r * 0.6);
   emitBlood(e.x, e.y, 12, null, 1.5);
-  // drop xp gem (unless already despawned)
   if (e.def.xp) {
     let xpType = e.def.xp;
-    // upgrade chance
     if (xpType === 'echoSmall' && Math.random() < 0.04) xpType = 'echoMed';
-    if (xpType === 'echoMed' && Math.random() < 0.05) xpType = 'echoLarge';
+    if (xpType === 'echoMed'   && Math.random() < 0.05) xpType = 'echoLarge';
     spawnPickup(xpType, e.x, e.y);
   }
-  // rare drops
   const r = Math.random();
   if (e.boss) {
-    spawnPickup('echoLarge', e.x + 20, e.y);
-    spawnPickup('echoLarge', e.x - 20, e.y);
-    spawnPickup('heart', e.x, e.y - 10);
-  } else if (e.elite) {
-    spawnPickup('echoMed', e.x, e.y);
-    if (r < 0.3) spawnPickup('heart', e.x + 8, e.y - 6);
-  } else {
-    if (r < 0.004) spawnPickup('heart', e.x, e.y);
-    else if (r < 0.0065) spawnPickup('magnet', e.x, e.y);
-    else if (r < 0.008) spawnPickup('bomb', e.x, e.y);
-  }
-  if (e.boss) {
-    shakeScreen(12);
+    // Bosses drop a gold reward chest plus echoes — biggest payout in the run.
+    spawnChest(e.x, e.y, 'gold');
+    spawnPickup('echoLarge', e.x + 24, e.y);
+    spawnPickup('echoLarge', e.x - 24, e.y);
+    shakeScreen(14);
     sfx.hitBig();
+    sfx.victory();
+  } else if (e.elite) {
+    // Elites (cleric beasts and promoted regulars) drop a silver chest.
+    spawnChest(e.x, e.y, 'silver');
+    spawnPickup('echoMed', e.x, e.y);
+    if (e.promoted) shakeScreen(5);
+  } else {
+    if (r < 0.004)       spawnPickup('heart',  e.x, e.y);
+    else if (r < 0.0065) spawnPickup('magnet', e.x, e.y);
+    else if (r < 0.008)  spawnPickup('bomb',   e.x, e.y);
   }
 }
 
@@ -1395,6 +1554,8 @@ function update(dt) {
   updatePickups(dt);
   updateParticles(dt);
   updateLanterns(dt);
+  updatePots(dt);
+  updateChests(dt);
   mergeGems(dt);
   spawnDirector(dt);
   cam.x = lerp(cam.x, player.x, 0.18);
@@ -1813,6 +1974,8 @@ function render() {
   drawSplats();
   drawAoes();
   drawLanterns();
+  drawPots();
+  drawChests();
   drawPickups();
   drawEnemies();
   drawPlayer();
@@ -1827,6 +1990,109 @@ function render() {
   drawVignette();
   drawLanternWaypoints();
   drawGrain();
+}
+
+function drawPots() {
+  for (const p of pots) {
+    const wob = Math.sin(p.wobble + game.time * 1.6) * 0.4;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath(); ctx.ellipse(0, 6, 7, 2.2, 0, 0, TAU); ctx.fill();
+    ctx.translate(wob, 0);
+
+    if (p.type === 'urn') {
+      ctx.beginPath();
+      ctx.moveTo(-5, -8);
+      ctx.bezierCurveTo(-7, -4, -7, 4, -3, 6);
+      ctx.lineTo(3, 6);
+      ctx.bezierCurveTo(7, 4, 7, -4, 5, -8);
+      ctx.lineTo(4, -10);
+      ctx.lineTo(-4, -10);
+      ctx.closePath();
+      ctx.fillStyle = '#3a2418'; ctx.fill();
+      ctx.strokeStyle = '#8a5a38'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fillStyle = '#5a3a28';
+      ctx.fillRect(-5, -3, 10, 1.5);
+    } else if (p.type === 'crate') {
+      ctx.beginPath(); ctx.rect(-7, -8, 14, 13);
+      ctx.fillStyle = '#3a2818'; ctx.fill();
+      ctx.strokeStyle = '#8a6440'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-7, -8); ctx.lineTo(7, 5);
+      ctx.moveTo(7, -8);  ctx.lineTo(-7, 5);
+      ctx.stroke();
+    } else if (p.type === 'lantern') {
+      // post
+      ctx.fillStyle = '#1a0e0a';
+      ctx.fillRect(-1, -2, 2, 8);
+      ctx.strokeStyle = '#5a3a2a'; ctx.lineWidth = 1;
+      ctx.strokeRect(-1, -2, 2, 8);
+      // lamp body
+      ctx.beginPath(); ctx.rect(-5, -10, 10, 8);
+      ctx.fillStyle = '#3a2818'; ctx.fill();
+      ctx.strokeStyle = '#a07a48'; ctx.lineWidth = 1.2; ctx.stroke();
+      // unlit glass
+      ctx.fillStyle = 'rgba(60,40,20,0.6)';
+      ctx.fillRect(-3.5, -8.5, 7, 5);
+    }
+    ctx.restore();
+  }
+}
+
+function drawChests() {
+  for (const c of chests) {
+    const flicker = 1 + Math.sin(c.pulse * 4) * 0.06;
+    const float = Math.sin(c.pulse * 2) * 0.8;
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    // halo
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const haloColor = c.tier === 'gold' ? 'rgba(245,217,138,0.55)' : 'rgba(180,180,200,0.4)';
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 70 * flicker);
+    grad.addColorStop(0, haloColor);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(-70, -70, 140, 140);
+    ctx.restore();
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath(); ctx.ellipse(0, 8, 14, 4.5, 0, 0, TAU); ctx.fill();
+    ctx.translate(0, float);
+    // body
+    ctx.beginPath(); ctx.rect(-12, -1, 24, 12);
+    ctx.fillStyle = '#1a0e08'; ctx.fill();
+    ctx.strokeStyle = c.tier === 'gold' ? '#f5d98a' : '#c0c0c8'; ctx.lineWidth = 1.5; ctx.stroke();
+    // banding
+    ctx.fillStyle = '#3a2418';
+    ctx.fillRect(-12, 4, 24, 1.2);
+    // lid
+    ctx.beginPath();
+    ctx.moveTo(-12, -1);
+    ctx.bezierCurveTo(-12, -10, 12, -10, 12, -1);
+    ctx.closePath();
+    ctx.fillStyle = '#241410'; ctx.fill(); ctx.stroke();
+    // metal trim on lid
+    ctx.beginPath();
+    ctx.moveTo(-12, -1);
+    ctx.bezierCurveTo(-12, -10, 12, -10, 12, -1);
+    ctx.strokeStyle = c.tier === 'gold' ? '#f5d98a' : '#c0c0c8';
+    ctx.stroke();
+    // lock
+    ctx.fillStyle = c.tier === 'gold' ? '#f5d98a' : '#c0c0c8';
+    ctx.fillRect(-2, -2, 4, 6);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-1, 0, 2, 2);
+    // glint
+    ctx.shadowColor = c.tier === 'gold' ? '#f5d98a' : '#fff';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = c.tier === 'gold' ? '#fff5cc' : '#fff';
+    ctx.fillRect(8, -3, 1.5, 1.5);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
 }
 
 function drawLanterns() {
@@ -2065,7 +2331,23 @@ function drawEnemy(e) {
   ctx.translate(e.x, e.y);
   const flash = e.flash > 0;
 
-  // warm halo to lift the silhouette off the dark cobbles
+  // walking animation — bob for upright shapes, sway for low ones, float for lurkers
+  const moving = (e.vx * e.vx + e.vy * e.vy) > 25;
+  let bob = 0, sway = 0;
+  if (moving) {
+    const phase = game.time * 9 + e.walkPhase;
+    if (e.def.shape === 'beast' || e.def.shape === 'rat') {
+      sway = Math.sin(phase * 1.2) * 1.1;
+    } else if (e.def.shape === 'lurker') {
+      bob = Math.sin(phase * 0.7) * 2;
+    } else if (e.def.shape === 'troll' || e.def.shape === 'cleric' || e.def.shape === 'boss' || e.def.shape === 'moon') {
+      bob = Math.abs(Math.sin(phase * 0.7)) * 1.3;  // heavy slow lurch
+    } else {
+      bob = Math.abs(Math.sin(phase)) * 1.5;
+    }
+  }
+
+  // warm halo to lift the silhouette off the dark cobbles (anchored)
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
   const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, e.r * 1.6);
@@ -2075,9 +2357,24 @@ function drawEnemy(e) {
   ctx.fillRect(-e.r * 1.8, -e.r * 1.8, e.r * 3.6, e.r * 3.6);
   ctx.restore();
 
-  // contact shadow
+  // contact shadow (anchored to ground, doesn't bob)
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.beginPath(); ctx.ellipse(0, e.r * 0.85, e.r * 0.85, e.r * 0.32, 0, 0, TAU); ctx.fill();
+
+  // Elite ring drawn under the body
+  if (e.promoted) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(245,217,138,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.lineDashOffset = -game.time * 14;
+    ctx.beginPath(); ctx.arc(0, e.r * 0.7, e.r * 1.2, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // body parts ride the bob/sway
+  ctx.translate(sway, -bob);
 
   const fillBody = flash ? '#fff' : e.def.color;
   const fillAcc  = flash ? '#fff' : e.def.accent;
@@ -2287,10 +2584,18 @@ function drawEnemy(e) {
 }
 
 function drawPlayer() {
+  const art = HUNTER_ART[game.hunter] || HUNTER_ART.hunter;
+  // Walk bob keyed on velocity magnitude.
+  const speedMag = Math.hypot(player.vx, player.vy);
+  const moving = speedMag > 30;
+  const walkPhase = game.time * 14;
+  const bob = moving ? Math.abs(Math.sin(walkPhase)) * 1.6 : 0;
+  const lean = moving ? Math.sin(walkPhase) * 0.05 : 0;
+
   ctx.save();
   ctx.translate(player.x, player.y);
 
-  // gold halo so the hunter is always findable
+  // gold halo (anchored, no bob)
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
   const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, 28);
@@ -2300,7 +2605,7 @@ function drawPlayer() {
   ctx.fillRect(-28, -28, 56, 56);
   ctx.restore();
 
-  // contact shadow
+  // contact shadow (anchored to ground)
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.beginPath(); ctx.ellipse(0, 11, 9, 4, 0, 0, TAU); ctx.fill();
 
@@ -2309,34 +2614,92 @@ function drawPlayer() {
     ctx.globalAlpha = 0.4;
   }
 
+  // Body parts ride the bob
+  ctx.translate(0, -bob);
+  ctx.rotate(lean);
+
   const flash = player.hitFlash > 0;
   ctx.lineWidth = 1.2;
   ctx.strokeStyle = flash ? '#fff' : '#5a3a2a';
 
   // long coat
   ctx.beginPath(); ctx.rect(-7, -2, 14, 14);
-  ctx.fillStyle = flash ? '#fff' : '#241410'; ctx.fill(); ctx.stroke();
-  // collar
+  ctx.fillStyle = flash ? '#fff' : art.coat; ctx.fill(); ctx.stroke();
+  // coat trim
   ctx.beginPath(); ctx.rect(-7, -2, 14, 2);
-  ctx.fillStyle = flash ? '#fff' : '#5a2818'; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = flash ? '#fff' : art.trim; ctx.fill(); ctx.stroke();
+  // hunter-specific coat detail
+  if (art.accent === 'scarf') {
+    // Hunter: red scarf trailing
+    ctx.beginPath();
+    ctx.moveTo(-3, 0);
+    ctx.lineTo(3, 0);
+    ctx.lineTo(4, 5);
+    ctx.lineTo(-1, 6);
+    ctx.lineTo(-4, 5);
+    ctx.closePath();
+    ctx.fillStyle = flash ? '#fff' : '#8b0000'; ctx.fill(); ctx.stroke();
+  } else if (art.accent === 'pistol') {
+    // Foreigner: silver pistol on belt
+    ctx.beginPath(); ctx.rect(3, 4, 6, 2.5);
+    ctx.fillStyle = flash ? '#fff' : '#aaa8a0'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = flash ? '#fff' : '#3a2818';
+    ctx.fillRect(2.5, 5, 2, 3);
+  }
   // head
   ctx.beginPath(); ctx.arc(0, -7, 5, 0, TAU);
-  ctx.fillStyle = flash ? '#fff' : '#3a2418'; ctx.fill(); ctx.stroke();
-  // tricorne
-  ctx.beginPath();
-  ctx.moveTo(-9, -10);
-  ctx.lineTo(9, -10);
-  ctx.lineTo(6, -13);
-  ctx.lineTo(-6, -13);
-  ctx.closePath();
-  ctx.fillStyle = flash ? '#fff' : '#1a0e0a'; ctx.fill(); ctx.stroke();
-  // eyes — gold
+  ctx.fillStyle = flash ? '#fff' : art.skin; ctx.fill(); ctx.stroke();
+
+  // hat
+  if (art.hat === 'tricorne') {
+    ctx.beginPath();
+    ctx.moveTo(-9, -10); ctx.lineTo(9, -10);
+    ctx.lineTo(6, -13);  ctx.lineTo(-6, -13);
+    ctx.closePath();
+    ctx.fillStyle = flash ? '#fff' : art.hatColor; ctx.fill(); ctx.stroke();
+  } else if (art.hat === 'tophat') {
+    ctx.beginPath();
+    ctx.rect(-7, -10.5, 14, 1.5);  // brim
+    ctx.fillStyle = flash ? '#fff' : art.hatColor; ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.rect(-4.5, -16, 9, 5.5);   // crown
+    ctx.fillStyle = flash ? '#fff' : art.hatColor; ctx.fill(); ctx.stroke();
+    // ribbon band
+    if (!flash) {
+      ctx.fillStyle = '#3a3458';
+      ctx.fillRect(-4.5, -12.5, 9, 1.2);
+    }
+  } else if (art.hat === 'hood') {
+    ctx.beginPath();
+    ctx.moveTo(-7, -8);
+    ctx.bezierCurveTo(-8, -14, 8, -14, 7, -8);
+    ctx.lineTo(7, -6);
+    ctx.lineTo(-7, -6);
+    ctx.closePath();
+    ctx.fillStyle = flash ? '#fff' : art.hatColor; ctx.fill(); ctx.stroke();
+  }
+
+  // eye glow — colour-keyed per hunter
   if (!flash) {
-    ctx.shadowColor = '#f5d98a'; ctx.shadowBlur = 4;
-    ctx.fillStyle = '#f5d98a';
+    ctx.shadowColor = art.eye; ctx.shadowBlur = 5;
+    ctx.fillStyle = art.eye;
     ctx.fillRect(-2.5, -7, 1.5, 1.5);
     ctx.fillRect(1, -7, 1.5, 1.5);
     ctx.shadowBlur = 0;
+  }
+
+  // Executioner: greatsword strapped to the back
+  if (art.accent === 'greatsword' && !flash) {
+    ctx.save();
+    ctx.translate(-1, 1);
+    ctx.rotate(-0.32);
+    ctx.fillStyle = '#3a3a40'; ctx.strokeStyle = '#1a1010';
+    ctx.beginPath(); ctx.rect(-1.5, -14, 3, 16); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#1a1010';
+    ctx.fillRect(-3, -14, 6, 1.5);
+    ctx.fillStyle = '#7a6240';
+    ctx.fillRect(-1, 2, 2, 4);
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -2598,6 +2961,10 @@ function startGame(hunterId) {
   pickups.length = 0;
   splats.length = 0;
   lanterns.length = 0;
+  pots.length = 0;
+  chests.length = 0;
+  game.potCd = 0;
+  spawnPotsInitial();
   upgradeQueue.length = 0;
   levelUpOpen = false;
   cam.x = 0; cam.y = 0;
