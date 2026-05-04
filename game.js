@@ -658,11 +658,13 @@ function spawnEnemy(typeId, x, y, mods = {}) {
     if (Math.random() < baseChance * typeMul) promoted = true;
   }
   const eliteScale = promoted ? { hp: 5.0, dmg: 1.6, r: 1.3, sp: 1.08 } : { hp: 1, dmg: 1, r: 1, sp: 1 };
-  // Early grace period — fragile rabble for the opening, smoother ramp
-  // afterwards so player progression and enemy HP stay matched.
-  const earlyMul = Math.min(1, 0.4 + game.time / 75);
-  const timeBonus = Math.max(0, game.time - 30) * 0.5;
-  const baseHp = (def.hp + timeBonus) * (mods.hpMul || 1) * eliteScale.hp * earlyMul;
+  // Stretched grace period — enemies stay frail for the first two minutes
+  // before reaching their printed base HP.
+  const earlyMul = Math.min(1, 0.4 + game.time / 120);
+  // Multiplicative scaling instead of additive — keeps each enemy's identity
+  // intact (rats stay trash, brick trolls stay tanks). Caps at 1.5x by 10 min.
+  const timeMul = 1 + Math.min(game.time / 600, 0.5);
+  const baseHp = def.hp * (mods.hpMul || 1) * eliteScale.hp * earlyMul * timeMul;
   enemies.push({
     type: typeId, def,
     x, y, vx: 0, vy: 0,
