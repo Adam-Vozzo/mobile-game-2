@@ -71,12 +71,34 @@ let audioCtx = null;
 let masterGain = null;
 let muted = false;
 
+const SETTINGS_KEY = 'yharnam_settings_v1';
+const settings = { volume: 0.4 };
+
+function loadSettings() {
+  try {
+    const s = localStorage.getItem(SETTINGS_KEY);
+    if (!s) return;
+    const data = JSON.parse(s);
+    if (typeof data.volume === 'number') {
+      settings.volume = Math.max(0, Math.min(1, data.volume));
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) { /* ignore */ }
+}
+
+loadSettings();
+
 function ensureAudio() {
   if (audioCtx) return;
   try {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.35;
+    masterGain.gain.value = settings.volume;
     masterGain.connect(audioCtx.destination);
   } catch (e) { /* no audio */ }
 }
@@ -3538,7 +3560,26 @@ const ui = {
   dreamCloseBtn: document.getElementById('dreamCloseBtn'),
   dreamInsight: document.getElementById('dreamInsight'),
   dreamPerks: document.getElementById('dreamPerks'),
+  volumeSlider: document.getElementById('volumeSlider'),
+  volumeValue: document.getElementById('volumeValue'),
 };
+
+function refreshVolumeUI() {
+  if (!ui.volumeSlider) return;
+  const pct = Math.round(settings.volume * 100);
+  ui.volumeSlider.value = pct;
+  ui.volumeValue.textContent = pct;
+}
+refreshVolumeUI();
+if (ui.volumeSlider) {
+  ui.volumeSlider.addEventListener('input', () => {
+    ensureAudio();
+    settings.volume = (+ui.volumeSlider.value) / 100;
+    if (masterGain) masterGain.gain.value = settings.volume;
+    ui.volumeValue.textContent = Math.round(settings.volume * 100);
+    saveSettings();
+  });
+}
 
 function openDream() {
   renderDreamPanel();

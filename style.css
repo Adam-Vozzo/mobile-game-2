@@ -773,6 +773,63 @@ body {
 .pause-stats span { color: var(--ash); }
 .pause-stats b { color: var(--gold); }
 
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+  margin: 4px 0 4px;
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--ash);
+}
+
+.volume-label {
+  white-space: nowrap;
+}
+
+.volume-value {
+  min-width: 32px;
+  text-align: right;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--gold-dim);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle at 35% 35%, #c41e3a 0%, #8b0000 60%, #4a0a0d 100%);
+  border: 1px solid var(--gold-dim);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(196, 30, 58, 0.5);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle at 35% 35%, #c41e3a 0%, #8b0000 60%, #4a0a0d 100%);
+  border: 1px solid var(--gold-dim);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
 /* Hunter's Dream meta-progression modal */
 
 .dream-modal-content {
