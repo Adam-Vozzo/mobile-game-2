@@ -318,10 +318,10 @@ function drawWorldBg() {
 }
 
 function drawVignette() {
-  const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+  const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.78);
   grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(0.55, 'rgba(0,0,0,0.35)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.95)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.22)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.78)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 }
@@ -443,7 +443,13 @@ const PICKUP_TYPES = {
   bomb:       { color: '#222', glow: '#ff6020', bomb: true, size: 7 },
 };
 function spawnPickup(type, x, y) {
-  pickups.push({ type, x, y, vx: rand(-30, 30), vy: rand(-50, -10), bornAt: game.time, attracted: false });
+  pickups.push({
+    type, x, y,
+    vx: rand(-40, 40), vy: rand(-40, 40),
+    bornAt: game.time,
+    bobSeed: Math.random() * TAU,
+    attracted: false,
+  });
 }
 
 // ============================================================
@@ -546,31 +552,38 @@ const enemies = [];
 
 const ENEMY_TYPES = {
   townsfolk: {
-    name: 'Yharnamite', hp: 8, speed: 42, dmg: 8, r: 11, xp: 'echoSmall', color: '#1a0e0a', accent: '#3a1a14',
-    eye: '#c41e3a', shape: 'humanoid',
+    name: 'Yharnamite', hp: 8, speed: 42, dmg: 8, r: 11, xp: 'echoSmall',
+    color: '#3a2418', accent: '#5a3a28', rim: '#7a5238', halo: 'rgba(80,40,20,0.28)',
+    eye: '#ff3850', shape: 'humanoid',
   },
   scourge: {
-    name: 'Scourge Beast', hp: 22, speed: 78, dmg: 14, r: 13, xp: 'echoSmall', color: '#0a0a08', accent: '#241a14',
-    eye: '#ffaa30', shape: 'beast',
+    name: 'Scourge Beast', hp: 22, speed: 78, dmg: 14, r: 13, xp: 'echoSmall',
+    color: '#241a14', accent: '#3a2820', rim: '#5a4030', halo: 'rgba(60,30,15,0.3)',
+    eye: '#ffb840', shape: 'beast',
   },
   crow: {
-    name: 'Crow Hunter', hp: 30, speed: 55, dmg: 16, r: 12, xp: 'echoMed', color: '#0a0a14', accent: '#3a3a4a',
-    eye: '#c0c8d8', shape: 'crow', ranged: true, fireRate: 2.4, projSpeed: 220, projDmg: 12,
+    name: 'Crow Hunter', hp: 30, speed: 55, dmg: 16, r: 12, xp: 'echoMed',
+    color: '#1a1a2a', accent: '#5a5a6a', rim: '#7a7a8a', halo: 'rgba(40,40,70,0.3)',
+    eye: '#d8e0f0', shape: 'crow', ranged: true, fireRate: 2.4, projSpeed: 220, projDmg: 12,
   },
   bloodlicker: {
-    name: 'Bloodlicker', hp: 14, speed: 95, dmg: 22, r: 12, xp: 'echoSmall', color: '#3a0608', accent: '#6a0a10',
+    name: 'Bloodlicker', hp: 14, speed: 95, dmg: 22, r: 12, xp: 'echoSmall',
+    color: '#5a0810', accent: '#8a1018', rim: '#b8202c', halo: 'rgba(140,20,30,0.4)',
     eye: '#ff4060', shape: 'lurker', explode: true, explodeR: 50,
   },
   cleric: {
-    name: 'Cleric Beast', hp: 200, speed: 52, dmg: 28, r: 24, xp: 'echoLarge', color: '#100806', accent: '#3a1a14',
+    name: 'Cleric Beast', hp: 200, speed: 52, dmg: 28, r: 24, xp: 'echoLarge',
+    color: '#3a1a14', accent: '#5a2818', rim: '#8a3820', halo: 'rgba(110,30,15,0.45)',
     eye: '#ff3030', shape: 'cleric', elite: true,
   },
   bloodletting: {
-    name: 'Bloodletting Beast', hp: 1400, speed: 48, dmg: 36, r: 38, xp: 'echoLarge', color: '#1a0608', accent: '#6a0a10',
-    eye: '#ff2020', shape: 'boss', boss: true, name2: 'Bloodletting Beast',
+    name: 'Bloodletting Beast', hp: 1400, speed: 48, dmg: 36, r: 38, xp: 'echoLarge',
+    color: '#3a0c10', accent: '#8a1018', rim: '#c82030', halo: 'rgba(160,15,25,0.55)',
+    eye: '#ff2020', shape: 'boss', boss: true,
   },
   moonPresence: {
-    name: 'Moon Presence', hp: 4500, speed: 56, dmg: 50, r: 44, xp: 'echoLarge', color: '#2a2030', accent: '#604858',
+    name: 'Moon Presence', hp: 4500, speed: 56, dmg: 50, r: 44, xp: 'echoLarge',
+    color: '#3a3045', accent: '#604858', rim: '#9080a0', halo: 'rgba(180,160,210,0.35)',
     eye: '#f0e0ff', shape: 'moon', boss: true,
   },
 };
@@ -1314,22 +1327,24 @@ function updateEnemies(dt) {
 function updatePickups(dt) {
   const pr2 = player.pickupRadius * player.pickupRadius;
   const grab2 = 18 * 18;
+  // Top-down view: no gravity. Heavy uniform friction so pickups pop and settle.
+  const fric = Math.pow(0.0008, dt);
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    p.vy += 220 * dt;
-    if (p.vy > 0 && Math.abs(p.vx) < 4 && Math.abs(p.vy) < 8) { p.vx = 0; p.vy = 0; }
-    p.vx *= Math.pow(0.0005, dt);
-    p.vy *= Math.pow(0.05, dt);
-    const def = PICKUP_TYPES[p.type];
+    p.vx *= fric;
+    p.vy *= fric;
+    if (!p.attracted && Math.abs(p.vx) < 1 && Math.abs(p.vy) < 1) {
+      p.vx = 0; p.vy = 0;
+    }
     const d2 = dist2(p.x, p.y, player.x, player.y);
-    if (p.attracted || d2 < pr2 || (def.magnet === undefined && p.bornAt && d2 < pr2)) {
+    if (p.attracted || d2 < pr2) {
       p.attracted = true;
       const a = angleTo(p.x, p.y, player.x, player.y);
-      const sp = 380;
-      p.vx = lerp(p.vx, Math.cos(a) * sp, 0.3);
-      p.vy = lerp(p.vy, Math.sin(a) * sp, 0.3);
+      const sp = 420;
+      p.vx = lerp(p.vx, Math.cos(a) * sp, 0.35);
+      p.vy = lerp(p.vy, Math.sin(a) * sp, 0.35);
     }
     if (d2 < grab2) {
       collectPickup(p);
@@ -1630,107 +1645,171 @@ function drawEnemies() {
 function drawEnemy(e) {
   ctx.save();
   ctx.translate(e.x, e.y);
-  const flashWhite = e.flash > 0;
-  const sh = e.shape || e.def.shape;
-  // shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.beginPath(); ctx.ellipse(0, e.r * 0.85, e.r * 0.85, e.r * 0.35, 0, 0, TAU); ctx.fill();
-  // body
+  const flash = e.flash > 0;
+
+  // warm halo to lift the silhouette off the dark cobbles
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, e.r * 1.6);
+  halo.addColorStop(0, e.def.halo || 'rgba(60,30,15,0.3)');
+  halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(-e.r * 1.8, -e.r * 1.8, e.r * 3.6, e.r * 3.6);
+  ctx.restore();
+
+  // contact shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.ellipse(0, e.r * 0.85, e.r * 0.85, e.r * 0.32, 0, 0, TAU); ctx.fill();
+
+  const fillBody = flash ? '#fff' : e.def.color;
+  const fillAcc  = flash ? '#fff' : e.def.accent;
+  const stroke   = flash ? '#fff' : e.def.rim;
+
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = stroke;
+
   if (e.def.shape === 'humanoid') {
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.color;
-    ctx.fillRect(-e.r * 0.55, -e.r * 0.4, e.r * 1.1, e.r * 1.4);
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.accent;
-    ctx.beginPath(); ctx.arc(0, -e.r * 0.55, e.r * 0.45, 0, TAU); ctx.fill();
-    if (!flashWhite) {
+    // body
+    ctx.beginPath();
+    ctx.rect(-e.r * 0.55, -e.r * 0.4, e.r * 1.1, e.r * 1.4);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    // hood drape
+    ctx.beginPath();
+    ctx.moveTo(-e.r * 0.55, -e.r * 0.2);
+    ctx.lineTo(0, -e.r * 0.85);
+    ctx.lineTo(e.r * 0.55, -e.r * 0.2);
+    ctx.closePath();
+    ctx.fillStyle = fillAcc; ctx.fill(); ctx.stroke();
+    // head
+    ctx.beginPath(); ctx.arc(0, -e.r * 0.55, e.r * 0.42, 0, TAU);
+    ctx.fillStyle = flash ? '#fff' : '#1a0c08'; ctx.fill(); ctx.stroke();
+    // glowing eyes
+    if (!flash) {
+      ctx.shadowColor = e.def.eye; ctx.shadowBlur = 6;
       ctx.fillStyle = e.def.eye;
-      ctx.fillRect(-e.r * 0.3, -e.r * 0.6, 2.5, 2.5);
-      ctx.fillRect(e.r * 0.15, -e.r * 0.6, 2.5, 2.5);
+      ctx.fillRect(-e.r * 0.28, -e.r * 0.6, 2.5, 2.5);
+      ctx.fillRect(e.r * 0.16, -e.r * 0.6, 2.5, 2.5);
+      ctx.shadowBlur = 0;
     }
   } else if (e.def.shape === 'beast') {
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.color;
+    // hunched body
+    ctx.beginPath(); ctx.ellipse(0, 0, e.r * 1.2, e.r * 0.7, 0, 0, TAU);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    // head/maw
+    ctx.beginPath(); ctx.arc(e.r * 0.75, -e.r * 0.2, e.r * 0.5, 0, TAU);
+    ctx.fillStyle = fillAcc; ctx.fill(); ctx.stroke();
+    // ear/horn
     ctx.beginPath();
-    ctx.ellipse(0, 0, e.r * 1.2, e.r * 0.7, 0, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.accent;
-    ctx.beginPath(); ctx.arc(e.r * 0.7, -e.r * 0.2, e.r * 0.5, 0, TAU); ctx.fill();
-    if (!flashWhite) {
+    ctx.moveTo(e.r * 0.55, -e.r * 0.55);
+    ctx.lineTo(e.r * 0.85, -e.r * 0.95);
+    ctx.lineTo(e.r * 0.95, -e.r * 0.5);
+    ctx.closePath();
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    if (!flash) {
+      ctx.shadowColor = e.def.eye; ctx.shadowBlur = 6;
       ctx.fillStyle = e.def.eye;
-      ctx.fillRect(e.r * 0.85, -e.r * 0.3, 3, 2);
+      ctx.fillRect(e.r * 0.95, -e.r * 0.32, 3, 2);
+      ctx.shadowBlur = 0;
+      // teeth
+      ctx.fillStyle = '#d8d0c0';
+      ctx.fillRect(e.r * 1.1, -e.r * 0.05, 2, 4);
     }
   } else if (e.def.shape === 'crow') {
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.color;
-    ctx.fillRect(-e.r * 0.5, -e.r * 0.3, e.r, e.r * 1.2);
-    ctx.fillStyle = flashWhite ? '#fff' : '#1a1a24';
-    ctx.beginPath(); ctx.arc(0, -e.r * 0.55, e.r * 0.45, 0, TAU); ctx.fill();
+    // long coat
+    ctx.beginPath(); ctx.rect(-e.r * 0.5, -e.r * 0.3, e.r, e.r * 1.2);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    // shoulders
+    ctx.beginPath();
+    ctx.moveTo(-e.r * 0.7, -e.r * 0.15);
+    ctx.lineTo(0, -e.r * 0.45);
+    ctx.lineTo(e.r * 0.7, -e.r * 0.15);
+    ctx.lineTo(e.r * 0.5, -e.r * 0.3);
+    ctx.lineTo(-e.r * 0.5, -e.r * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = fillAcc; ctx.fill(); ctx.stroke();
     // top hat
-    ctx.fillStyle = flashWhite ? '#fff' : '#0a0a14';
-    ctx.fillRect(-e.r * 0.5, -e.r * 1.05, e.r, e.r * 0.18);
-    ctx.fillRect(-e.r * 0.35, -e.r * 1.4, e.r * 0.7, e.r * 0.4);
-    if (!flashWhite) {
-      // pale mask
-      ctx.fillStyle = '#d8d4c8';
-      ctx.beginPath(); ctx.arc(0, -e.r * 0.45, e.r * 0.32, 0, TAU); ctx.fill();
+    ctx.beginPath();
+    ctx.rect(-e.r * 0.55, -e.r * 1.05, e.r * 1.1, e.r * 0.18);
+    ctx.rect(-e.r * 0.4, -e.r * 1.45, e.r * 0.8, e.r * 0.42);
+    ctx.fillStyle = flash ? '#fff' : '#0a0a14'; ctx.fill(); ctx.stroke();
+    // pale mask + beak
+    ctx.beginPath(); ctx.arc(0, -e.r * 0.55, e.r * 0.36, 0, TAU);
+    ctx.fillStyle = flash ? '#fff' : '#d8d4c8'; ctx.fill(); ctx.stroke();
+    if (!flash) {
+      ctx.beginPath();
+      ctx.moveTo(0, -e.r * 0.55);
+      ctx.lineTo(e.r * 0.55, -e.r * 0.4);
+      ctx.lineTo(0, -e.r * 0.35);
+      ctx.closePath();
+      ctx.fillStyle = '#a89878'; ctx.fill(); ctx.stroke();
       ctx.fillStyle = e.def.eye;
-      ctx.fillRect(-e.r * 0.18, -e.r * 0.55, 2, 2);
-      ctx.fillRect(e.r * 0.08, -e.r * 0.55, 2, 2);
+      ctx.fillRect(-e.r * 0.18, -e.r * 0.62, 2, 2);
+      ctx.fillRect(e.r * 0.06, -e.r * 0.62, 2, 2);
     }
   } else if (e.def.shape === 'lurker') {
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.color;
-    ctx.beginPath(); ctx.arc(0, 0, e.r, 0, TAU); ctx.fill();
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.accent;
+    // pulsing body
+    const pulse = 1 + Math.sin(game.time * 6 + e.bornAt * 3) * 0.06;
+    ctx.beginPath(); ctx.arc(0, 0, e.r * pulse, 0, TAU);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    // tendrils
+    ctx.strokeStyle = fillAcc;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
-      const a = i / 6 * TAU + game.time * 1.4;
-      const x = Math.cos(a) * e.r * 0.85;
-      const y = Math.sin(a) * e.r * 0.85;
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + Math.cos(a) * 4, y + Math.sin(a) * 4);
+      const a = i / 6 * TAU + game.time * 1.6;
+      const x0 = Math.cos(a) * e.r * 0.85;
+      const y0 = Math.sin(a) * e.r * 0.85;
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + Math.cos(a) * 5, y0 + Math.sin(a) * 5);
     }
-    ctx.lineWidth = 3; ctx.strokeStyle = e.def.accent;
     ctx.stroke();
-    if (!flashWhite) {
+    if (!flash) {
+      ctx.shadowColor = e.def.eye; ctx.shadowBlur = 8;
       ctx.fillStyle = e.def.eye;
-      ctx.beginPath(); ctx.arc(0, 0, e.r * 0.35, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, e.r * 0.32, 0, TAU); ctx.fill();
+      ctx.shadowBlur = 0;
     }
-  } else if (e.def.shape === 'cleric' || e.def.shape === 'boss' || e.def.shape === 'moon') {
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.color;
-    ctx.beginPath(); ctx.ellipse(0, 0, e.r, e.r * 1.1, 0, 0, TAU); ctx.fill();
+  } else { // cleric, boss, moon
+    // body
+    ctx.beginPath(); ctx.ellipse(0, 0, e.r, e.r * 1.1, 0, 0, TAU);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
     // hunched shoulders
-    ctx.fillStyle = flashWhite ? '#fff' : e.def.accent;
     ctx.beginPath();
     ctx.ellipse(-e.r * 0.6, -e.r * 0.3, e.r * 0.4, e.r * 0.55, 0.4, 0, TAU);
     ctx.ellipse(e.r * 0.6, -e.r * 0.3, e.r * 0.4, e.r * 0.55, -0.4, 0, TAU);
-    ctx.fill();
-    // head/skull
-    ctx.fillStyle = flashWhite ? '#fff' : '#241410';
-    ctx.beginPath(); ctx.arc(0, -e.r * 0.7, e.r * 0.5, 0, TAU); ctx.fill();
-    if (!flashWhite) {
-      ctx.shadowColor = e.def.eye;
-      ctx.shadowBlur = 12;
+    ctx.fillStyle = fillAcc; ctx.fill(); ctx.stroke();
+    // skull head
+    ctx.beginPath(); ctx.arc(0, -e.r * 0.7, e.r * 0.5, 0, TAU);
+    ctx.fillStyle = flash ? '#fff' : '#241410'; ctx.fill(); ctx.stroke();
+    if (!flash) {
+      ctx.shadowColor = e.def.eye; ctx.shadowBlur = 14;
       ctx.fillStyle = e.def.eye;
-      const eyeY = -e.r * 0.7;
-      ctx.fillRect(-e.r * 0.25, eyeY, 4, 4);
-      ctx.fillRect(e.r * 0.1, eyeY, 4, 4);
+      const eyeY = -e.r * 0.72;
+      ctx.fillRect(-e.r * 0.26, eyeY, 4.5, 4.5);
+      ctx.fillRect(e.r * 0.1,  eyeY, 4.5, 4.5);
       ctx.shadowBlur = 0;
+      // jaw
+      ctx.fillStyle = '#0a0608';
+      ctx.fillRect(-e.r * 0.2, -e.r * 0.55, e.r * 0.4, e.r * 0.12);
     }
     if (e.def.shape === 'moon') {
-      // halo
-      ctx.strokeStyle = 'rgba(240,224,255,0.3)';
+      ctx.strokeStyle = 'rgba(240,224,255,0.4)';
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, -e.r * 0.7, e.r * 0.9, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, -e.r * 0.7, e.r * 0.95, 0, TAU); ctx.stroke();
     }
   }
   ctx.restore();
+
   // hp bar (bosses + elites)
   if (e.boss || e.elite) {
-    const w = e.boss ? 90 : 50;
+    const w = e.boss ? 100 : 54;
     const u = clamp(e.hp / e.maxHp, 0, 1);
-    const bx = e.x - w / 2, by = e.y - e.r - 10;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    const bx = e.x - w / 2, by = e.y - e.r - 12;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
     ctx.fillRect(bx - 1, by - 1, w + 2, 5);
     ctx.fillStyle = '#3a0608';
     ctx.fillRect(bx, by, w, 3);
-    ctx.fillStyle = '#c41e3a';
+    ctx.fillStyle = '#d6182e';
     ctx.fillRect(bx, by, w * u, 3);
   }
 }
@@ -1738,37 +1817,54 @@ function drawEnemy(e) {
 function drawPlayer() {
   ctx.save();
   ctx.translate(player.x, player.y);
-  // shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+
+  // gold halo so the hunter is always findable
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, 28);
+  halo.addColorStop(0, 'rgba(201,169,97,0.22)');
+  halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(-28, -28, 56, 56);
+  ctx.restore();
+
+  // contact shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.beginPath(); ctx.ellipse(0, 11, 9, 4, 0, 0, TAU); ctx.fill();
+
   // I-frames blink
   if (player.iframes > 0 && Math.floor(player.iframes * 24) % 2 === 0) {
     ctx.globalAlpha = 0.4;
   }
-  // body — long coat
+
   const flash = player.hitFlash > 0;
-  ctx.fillStyle = flash ? '#fff' : '#14090c';
-  ctx.fillRect(-7, -2, 14, 14);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = flash ? '#fff' : '#5a3a2a';
+
+  // long coat
+  ctx.beginPath(); ctx.rect(-7, -2, 14, 14);
+  ctx.fillStyle = flash ? '#fff' : '#241410'; ctx.fill(); ctx.stroke();
   // collar
-  ctx.fillStyle = flash ? '#fff' : '#3a1a14';
-  ctx.fillRect(-7, -2, 14, 2);
+  ctx.beginPath(); ctx.rect(-7, -2, 14, 2);
+  ctx.fillStyle = flash ? '#fff' : '#5a2818'; ctx.fill(); ctx.stroke();
   // head
-  ctx.fillStyle = flash ? '#fff' : '#241410';
-  ctx.beginPath(); ctx.arc(0, -7, 5, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -7, 5, 0, TAU);
+  ctx.fillStyle = flash ? '#fff' : '#3a2418'; ctx.fill(); ctx.stroke();
   // tricorne
-  ctx.fillStyle = flash ? '#fff' : '#0a0608';
   ctx.beginPath();
   ctx.moveTo(-9, -10);
   ctx.lineTo(9, -10);
   ctx.lineTo(6, -13);
   ctx.lineTo(-6, -13);
   ctx.closePath();
-  ctx.fill();
-  // eyes
+  ctx.fillStyle = flash ? '#fff' : '#1a0e0a'; ctx.fill(); ctx.stroke();
+  // eyes — gold
   if (!flash) {
-    ctx.fillStyle = '#c9a961';
+    ctx.shadowColor = '#f5d98a'; ctx.shadowBlur = 4;
+    ctx.fillStyle = '#f5d98a';
     ctx.fillRect(-2.5, -7, 1.5, 1.5);
     ctx.fillRect(1, -7, 1.5, 1.5);
+    ctx.shadowBlur = 0;
   }
   ctx.restore();
 }
