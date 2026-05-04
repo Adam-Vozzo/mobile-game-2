@@ -1409,6 +1409,9 @@ const game = {
   gemMergeCd: 0,
   eliteCd: 60,
   potCd: 0,
+  // Deterministic XP drop budget. Accumulates at xpDropRate per second,
+  // a regular kill spends 1 to drop a gem. Decouples XP gain from kill count.
+  xpDropAcc: 1,
 };
 
 // ============================================================
@@ -1435,10 +1438,13 @@ function killEnemy(e) {
   game.kills++;
   spawnSplat(e.x, e.y, 10 + e.r * 0.6);
   emitBlood(e.x, e.y, 12, null, 1.5);
-  if (e.def.xp) {
+  // Regular kills only drop XP when the budget says so. Bosses and elites
+  // always drop their guaranteed loot below.
+  if (e.def.xp && !e.boss && !e.elite && game.xpDropAcc >= 1) {
+    game.xpDropAcc -= 1;
     let xpType = e.def.xp;
-    if (xpType === 'echoSmall' && Math.random() < 0.04) xpType = 'echoMed';
-    if (xpType === 'echoMed'   && Math.random() < 0.05) xpType = 'echoLarge';
+    if (xpType === 'echoSmall' && Math.random() < 0.06) xpType = 'echoMed';
+    if (xpType === 'echoMed'   && Math.random() < 0.07) xpType = 'echoLarge';
     spawnPickup(xpType, e.x, e.y);
   }
   const r = Math.random();
@@ -1576,6 +1582,9 @@ function spawnByTime(t) {
 // ============================================================
 function update(dt) {
   readKeyboard();
+  // XP drop budget — rate ramps from 0.7/s at start to ~3.2/s past 4 minutes.
+  const xpRate = 0.7 + Math.min(game.time / 90, 2.5);
+  game.xpDropAcc = Math.min(game.xpDropAcc + dt * xpRate, 4); // small cap so we don't dump on a kill streak
   updatePlayer(dt);
   updateWeapons(dt);
   updateProjectiles(dt);
