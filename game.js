@@ -2284,6 +2284,44 @@ function render() {
   drawGrain();
 }
 
+// Moon palette per phase — light/mid/dark stops fed into the SVG gradient.
+// At sunset/sunrise the moon catches warm horizon light; deep night washes
+// it cold and pale; the witching hour pulls toward a faint blood-red.
+const MOON_PHASES = [
+  { t: 0.00, light: '#ffd09a', mid: '#d89a60', dark: '#5a2a18' }, // sunset embers
+  { t: 0.18, light: '#ffe8c0', mid: '#d8b888', dark: '#5a4028' }, // dusk
+  { t: 0.42, light: '#f0f4ff', mid: '#a8b8d8', dark: '#384060' }, // deep cold night
+  { t: 0.58, light: '#ffd8d8', mid: '#c08890', dark: '#5a1a28' }, // witching hour (blood)
+  { t: 0.82, light: '#f4e0f0', mid: '#b890c0', dark: '#503850' }, // pre-dawn lavender
+  { t: 1.00, light: '#ffcc88', mid: '#d8986c', dark: '#5a2a14' }, // sunrise embers
+];
+
+function lerpHex(a, b, t) {
+  const ar = parseInt(a.slice(1, 3), 16);
+  const ag = parseInt(a.slice(3, 5), 16);
+  const ab = parseInt(a.slice(5, 7), 16);
+  const br = parseInt(b.slice(1, 3), 16);
+  const bg = parseInt(b.slice(3, 5), 16);
+  const bb = parseInt(b.slice(5, 7), 16);
+  const r = Math.round(lerp(ar, br, t));
+  const g = Math.round(lerp(ag, bg, t));
+  const blu = Math.round(lerp(ab, bb, t));
+  return 'rgb(' + r + ',' + g + ',' + blu + ')';
+}
+
+function updateMoonPalette() {
+  if (!ui.moonStopA) return;
+  const u = clamp(game.time / game.victoryAt, 0, 1);
+  let i = 0;
+  while (i < MOON_PHASES.length - 1 && MOON_PHASES[i + 1].t < u) i++;
+  const a = MOON_PHASES[i];
+  const b = MOON_PHASES[Math.min(MOON_PHASES.length - 1, i + 1)];
+  const seg = (u - a.t) / Math.max(0.001, b.t - a.t);
+  ui.moonStopA.setAttribute('stop-color', lerpHex(a.light, b.light, seg));
+  ui.moonStopB.setAttribute('stop-color', lerpHex(a.mid,   b.mid,   seg));
+  ui.moonStopC.setAttribute('stop-color', lerpHex(a.dark,  b.dark,  seg));
+}
+
 // Subtle colour tint that shifts from sunset → midnight → sunrise across the
 // run. Drives mood without being so loud it interferes with readability.
 const NIGHT_STOPS = [
@@ -3399,6 +3437,9 @@ const ui = {
   xpFill: document.getElementById('xpFill'),
   timer: document.getElementById('timer'),
   moonIcon: document.getElementById('moonIcon'),
+  moonStopA: document.getElementById('moonStopA'),
+  moonStopB: document.getElementById('moonStopB'),
+  moonStopC: document.getElementById('moonStopC'),
   lvlText: document.getElementById('lvlText'),
   killText: document.getElementById('killText'),
   echoText: document.getElementById('echoText'),
@@ -3491,6 +3532,7 @@ function updateHud() {
     // it doesn't look frozen in the very first seconds.
     const angle = cycleProg * 540 + game.time * 0.6;
     ui.moonIcon.style.transform = 'rotate(' + angle.toFixed(1) + 'deg)';
+    updateMoonPalette();
   }
   ui.lvlText.textContent = player.level;
   ui.killText.textContent = game.kills;
