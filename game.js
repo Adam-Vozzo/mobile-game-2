@@ -1805,6 +1805,8 @@ function updateEnemies(dt) {
         vy += (dy / d) * f;
       }
     }
+    // persist velocity so renderers can read it for animation
+    e.vx = vx; e.vy = vy;
     // knockback
     e.x += (vx + e.knockX) * dt;
     e.y += (vy + e.knockY) * dt;
