@@ -31,15 +31,18 @@ let W = 0, H = 0;
 function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  // Cap the effective canvas area so big monitors don't pay 4K-retina rates
-  // for what is otherwise a small game. ~2.4M pixels is enough for a crisp
-  // image without melting fill rate.
+  // Cap effective canvas area. Ultrawide and 4K viewports easily exceed
+  // 2.4M pixels even at DPR=1, so DPR is allowed to drop below 1 (canvas
+  // renders smaller, browser scales up to fill).
   const wantDPR = Math.min(window.devicePixelRatio || 1, 2);
   const maxPixels = 2_400_000;
   const naturalPixels = w * h * wantDPR * wantDPR;
-  DPR = naturalPixels <= maxPixels
-    ? wantDPR
-    : Math.max(1, Math.sqrt(maxPixels / (w * h)));
+  if (naturalPixels <= maxPixels) {
+    DPR = wantDPR;
+  } else {
+    // Hard floor of 0.5 so the image doesn't dissolve on absurd resolutions.
+    DPR = Math.max(0.5, Math.sqrt(maxPixels / (w * h)));
+  }
   W = w;
   H = h;
   canvas.width = Math.floor(W * DPR);
