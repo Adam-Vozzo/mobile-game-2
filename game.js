@@ -1265,14 +1265,21 @@ function updateLanterns(dt) {
 }
 
 function grantLanternReward(l) {
-  // Modest reward: a single large echo and two pieces of Insight (the rare
-  // meta currency). No more magnetism pulse or HP heal — the lantern is a
-  // signpost, not a refill.
-  spawnPickup('echoLarge', l.x, l.y);
-  spawnPickup('insight', l.x - 10, l.y - 6);
-  spawnPickup('insight', l.x + 10, l.y - 6);
-  shakeScreen(4);
-  emitSpark(l.x, l.y, 24, '#f5d98a');
+  // Reward scales with run progression — late lanterns are worth more.
+  const t = game.time;
+  const echoType = t > 9 * 60 ? 'echoCrest' : 'echoLarge';
+  const echoCount = t > 4 * 60 ? 2 : 1;
+  const insightCount = 2 + Math.floor(t / 240); // +1 every four minutes
+  for (let i = 0; i < echoCount; i++) {
+    const a = i / echoCount * TAU;
+    spawnPickup(echoType, l.x + Math.cos(a) * 9, l.y + Math.sin(a) * 9);
+  }
+  for (let i = 0; i < insightCount; i++) {
+    const a = (i + 0.5) / insightCount * TAU;
+    spawnPickup('insight', l.x + Math.cos(a) * 18, l.y + Math.sin(a) * 18);
+  }
+  shakeScreen(5);
+  emitSpark(l.x, l.y, 28, '#f5d98a');
   sfx.pickupBig();
 }
 
@@ -1360,12 +1367,14 @@ function chooseSmartLoot() {
   for (const pk of pickups) if (PICKUP_TYPES[pk.type].xp) xpGems++;
 
   // 'null' = empty pot. The base weight is high so most breaks return nothing.
+  // Bombs are deliberately rare even when surrounded — chaining them shouldn't
+  // be a viable strategy for clearing waves.
   const pool = [{ type: null, weight: 8 }];
   if (hpRatio < 0.35)       pool.push({ type: 'heart',  weight: 6 });
   else if (hpRatio < 0.65)  pool.push({ type: 'heart',  weight: 1.5 });
   else                      pool.push({ type: 'heart',  weight: 0.4 });
-  if (nearbyEnemies > 14)   pool.push({ type: 'bomb',   weight: 4 });
-  else                      pool.push({ type: 'bomb',   weight: 0.3 });
+  if (nearbyEnemies > 18)   pool.push({ type: 'bomb',   weight: 1.2 });
+  else                      pool.push({ type: 'bomb',   weight: 0.1 });
   if (xpGems > 25)          pool.push({ type: 'magnet', weight: 3 });
   else                      pool.push({ type: 'magnet', weight: 0.4 });
 
@@ -3568,7 +3577,6 @@ ui.quitBtn.addEventListener('click', () => {
 
 function onPlayerDeath() {
   game.running = false;
-  awardEchoes();
   sfx.death();
   ui.goTime.textContent = fmtTime(game.time);
   ui.goLevel.textContent = player.level;
@@ -3585,7 +3593,6 @@ ui.retryBtn.addEventListener('click', () => {
 
 function onVictory() {
   game.running = false;
-  awardEchoes();
   sfx.victory();
   ui.vTime.textContent = fmtTime(game.time);
   ui.vLevel.textContent = player.level;
