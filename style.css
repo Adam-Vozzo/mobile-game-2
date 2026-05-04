@@ -396,8 +396,12 @@ body {
 }
 
 @media (min-width: 600px) {
-  .hunters { grid-template-columns: repeat(3, 1fr); }
+  .hunters { grid-template-columns: 1fr 1fr; }
   .game-title { font-size: 72px; }
+}
+
+@media (min-width: 960px) {
+  .hunters { grid-template-columns: repeat(4, 1fr); }
 }
 
 .hunter-card {
@@ -478,6 +482,16 @@ body {
   background:
     radial-gradient(circle at 38% 42%, rgba(255, 100, 100, 0.9) 0 1.5px, transparent 2px),
     radial-gradient(circle at 62% 42%, rgba(255, 100, 100, 0.9) 0 1.5px, transparent 2px);
+}
+
+.portrait-iosefka { background: radial-gradient(circle at 50% 60%, #1a2a24 0%, #0a0608 100%); }
+.portrait-iosefka::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 38% 42%, rgba(140, 230, 200, 0.95) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 62% 42%, rgba(140, 230, 200, 0.95) 0 1.5px, transparent 2px);
 }
 
 .hunter-name {

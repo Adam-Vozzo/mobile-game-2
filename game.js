@@ -485,6 +485,13 @@ const HUNTERS = {
     passiveName: "Stalwart",
     passiveDesc: 'Heavy garb softens incoming blows — 25% damage reduction.',
   },
+  iosefka: {
+    name: 'Iosefka', hp: 150, speed: 142, weapon: 'sawCleaver',
+    bonus: { speed: 0.95, dmg: 0.9, area: 1.05 },
+    passive: 'physician',
+    passiveName: "Physician's Pact",
+    passiveDesc: '+2.0 HP/sec regen, 10% lifesteal, hearts restore 50% more.',
+  },
 };
 
 // Distinct silhouettes per hunter — coat colour, hat shape, eye glow, and a
@@ -501,6 +508,10 @@ const HUNTER_ART = {
   executioner: {
     coat: '#2a1410', trim: '#5a1818', skin: '#241410', eye: '#ff5050',
     hat: 'hood', hatColor: '#1a0608', accent: 'greatsword',
+  },
+  iosefka: {
+    coat: '#2a2a30', trim: '#6a6a74', skin: '#d8c4a8', eye: '#80e0c0',
+    hat: 'tricorne', hatColor: '#1a1a22', accent: 'vial',
   },
 };
 
@@ -563,6 +574,8 @@ function recomputeStats() {
   // Hunter passive defaults
   player.projDmgMul = 1;
   player.dmgReduce = 0;
+  player.lifesteal = 0;
+  player.healMul = 1;
   let speedMul = h.bonus.speed * (player.metaSpeedMul || 1);
   let maxHpBonus = 0;
   // Apply hunter-specific passive perk before player passives stack on top.
@@ -570,6 +583,7 @@ function recomputeStats() {
     case 'vigil':     player.regen += 0.5; break;
     case 'marksman':  player.projDmgMul = 1.25; break;
     case 'stalwart':  player.dmgReduce = 0.25; break;
+    case 'physician': player.regen += 2.0; player.lifesteal = 0.10; player.healMul = 1.5; break;
   }
   const apply = (m) => {
     if (m.dmg)       player.dmgMul *= m.dmg;
@@ -1605,6 +1619,11 @@ function hitEnemy(e, dmg, fromX, fromY, knock = 60) {
     e.knockY += Math.sin(a) * knock;
   }
   emitBlood(e.x, e.y, 4 + (crit ? 4 : 0), angleTo(fromX, fromY, e.x, e.y), crit ? 1.4 : 1);
+  // Lifesteal — Iosefka's Physician's Pact converts a slice of damage to HP.
+  if (player.lifesteal && final > 0 && player.hp < player.maxHp) {
+    const heal = final * player.lifesteal;
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+  }
   if (e.hp <= 0) killEnemy(e);
   else if (crit) sfx.hitBig(); else sfx.hit();
 }
@@ -2126,7 +2145,7 @@ function collectPickup(p) {
     emitSpark(player.x, player.y, 6, '#f5d98a');
     spawnFloatingLabel(player.x, player.y - 18, '◈ +' + (earned || 1) + ' INSIGHT');
   } else if (def.heal) {
-    player.hp = Math.min(player.maxHp, player.hp + def.heal * player.maxHp);
+    player.hp = Math.min(player.maxHp, player.hp + def.heal * player.maxHp * (player.healMul || 1));
     sfx.pickupBig();
     emitSpark(player.x, player.y, 8, '#ff4060');
   } else if (def.magnet) {
@@ -3219,6 +3238,20 @@ function drawPlayer() {
     ctx.fillStyle = flash ? '#fff' : '#aaa8a0'; ctx.fill(); ctx.stroke();
     ctx.fillStyle = flash ? '#fff' : '#3a2818';
     ctx.fillRect(2.5, 5, 2, 3);
+  } else if (art.accent === 'vial') {
+    // Iosefka: blood vial holstered on belt
+    ctx.beginPath(); ctx.rect(2.5, 3.5, 4, 7);
+    ctx.fillStyle = flash ? '#fff' : '#1a0608'; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = flash ? '#fff' : '#c41e3a';
+    ctx.fillRect(3, 5, 3, 4.5);
+    // cork stopper
+    ctx.fillStyle = flash ? '#fff' : '#7a5a40';
+    ctx.fillRect(3, 3, 3, 1.2);
+    // Iosefka's eye glow is more vivid — second small spark
+    if (!flash) {
+      ctx.fillStyle = 'rgba(160,240,200,0.5)';
+      ctx.fillRect(3.6, 5.5, 1.8, 1);
+    }
   }
   // head
   ctx.beginPath(); ctx.arc(0, -7, 5, 0, TAU);
