@@ -569,37 +569,37 @@ const enemies = [];
 
 const ENEMY_TYPES = {
   townsfolk: {
-    name: 'Yharnamite', hp: 8, speed: 42, dmg: 8, r: 11, xp: 'echoSmall',
+    name: 'Yharnamite', hp: 14, speed: 42, dmg: 9, r: 11, xp: 'echoSmall',
     color: '#3a2418', accent: '#5a3a28', rim: '#7a5238', halo: 'rgba(80,40,20,0.28)',
     eye: '#ff3850', shape: 'humanoid',
   },
   scourge: {
-    name: 'Scourge Beast', hp: 22, speed: 78, dmg: 14, r: 13, xp: 'echoSmall',
+    name: 'Scourge Beast', hp: 38, speed: 78, dmg: 16, r: 13, xp: 'echoSmall',
     color: '#241a14', accent: '#3a2820', rim: '#5a4030', halo: 'rgba(60,30,15,0.3)',
     eye: '#ffb840', shape: 'beast',
   },
   crow: {
-    name: 'Crow Hunter', hp: 30, speed: 60, dmg: 16, r: 12, xp: 'echoMed',
+    name: 'Crow Hunter', hp: 55, speed: 60, dmg: 18, r: 12, xp: 'echoMed',
     color: '#1a1a2a', accent: '#5a5a6a', rim: '#7a7a8a', halo: 'rgba(40,40,70,0.3)',
-    eye: '#d8e0f0', shape: 'crow', ranged: true, fireRate: 4.5, projSpeed: 170, projDmg: 7,
+    eye: '#d8e0f0', shape: 'crow', ranged: true, fireRate: 4.5, projSpeed: 170, projDmg: 8,
   },
   brickTroll: {
-    name: 'Brick Troll', hp: 110, speed: 36, dmg: 22, r: 19, xp: 'echoMed',
+    name: 'Brick Troll', hp: 200, speed: 36, dmg: 26, r: 19, xp: 'echoMed',
     color: '#3a2a1a', accent: '#5a4030', rim: '#7a5a40', halo: 'rgba(80,55,30,0.35)',
     eye: '#ffaa30', shape: 'troll',
   },
   plagueRat: {
-    name: 'Plague Rat', hp: 6, speed: 110, dmg: 5, r: 7, xp: 'echoSmall',
+    name: 'Plague Rat', hp: 11, speed: 110, dmg: 6, r: 7, xp: 'echoSmall',
     color: '#1a1410', accent: '#3a2a20', rim: '#5a4830', halo: 'rgba(50,35,20,0.22)',
     eye: '#ff3838', shape: 'rat',
   },
   bloodlicker: {
-    name: 'Bloodlicker', hp: 14, speed: 95, dmg: 22, r: 12, xp: 'echoSmall',
+    name: 'Bloodlicker', hp: 24, speed: 95, dmg: 26, r: 12, xp: 'echoSmall',
     color: '#5a0810', accent: '#8a1018', rim: '#b8202c', halo: 'rgba(140,20,30,0.4)',
     eye: '#ff4060', shape: 'lurker', explode: true, explodeR: 50,
   },
   cleric: {
-    name: 'Cleric Beast', hp: 200, speed: 52, dmg: 28, r: 24, xp: 'echoLarge',
+    name: 'Cleric Beast', hp: 360, speed: 52, dmg: 32, r: 24, xp: 'echoLarge',
     color: '#3a1a14', accent: '#5a2818', rim: '#8a3820', halo: 'rgba(110,30,15,0.45)',
     eye: '#ff3030', shape: 'cleric', elite: true,
   },
@@ -617,14 +617,19 @@ const ENEMY_TYPES = {
 
 function spawnEnemy(typeId, x, y, mods = {}) {
   const def = ENEMY_TYPES[typeId];
-  // Promotion to elite (gold ring + reward chest). Bosses and intrinsic
-  // elites (cleric beast) skip the roll.
+  // Promotion to elite — rare. Promoting tougher units is even rarer.
   let promoted = false;
-  if (!def.boss && !def.elite && !mods.elite && game.time > 90 && Math.random() < 0.012) {
-    promoted = true;
+  if (!def.boss && !def.elite && !mods.elite && game.time > 90) {
+    const baseChance = 0.0025;
+    // Brick trolls and bloodlickers are already pressure units; rarely promote.
+    const typeMul = (typeId === 'brickTroll' || typeId === 'bloodlicker') ? 0.4
+                  : (typeId === 'crow') ? 0.7
+                  : 1;
+    if (Math.random() < baseChance * typeMul) promoted = true;
   }
-  const eliteScale = promoted ? { hp: 4.0, dmg: 1.5, r: 1.3, sp: 1.08 } : { hp: 1, dmg: 1, r: 1, sp: 1 };
-  const baseHp = (def.hp + (game.time * 0.4)) * (mods.hpMul || 1) * eliteScale.hp;
+  const eliteScale = promoted ? { hp: 5.0, dmg: 1.6, r: 1.3, sp: 1.08 } : { hp: 1, dmg: 1, r: 1, sp: 1 };
+  // Time-based HP ramp up from 0.4 to 0.6 per second so the late game stays threatening.
+  const baseHp = (def.hp + (game.time * 0.6)) * (mods.hpMul || 1) * eliteScale.hp;
   enemies.push({
     type: typeId, def,
     x, y, vx: 0, vy: 0,
@@ -1485,15 +1490,14 @@ function damagePlayer(amount) {
 // ============================================================
 function spawnDirector(dt) {
   const t = game.time;
-  // Spawn rate ramps with time, faster than before to fit a 15-min run.
-  let rate = 1.0 + Math.min(t / 12, 14);
-  rate *= 1 + Math.min(t / 240, 0.7);
+  // ~50% slower spawn ramp than before — fewer but tougher enemies overall.
+  let rate = 0.6 + Math.min(t / 18, 7);
+  rate *= 1 + Math.min(t / 300, 0.6);
   game.spawnAcc += rate * dt;
   while (game.spawnAcc >= 1) {
     game.spawnAcc -= 1;
     spawnByTime(t);
   }
-  // Bosses (compressed for 15-min run)
   if (!game.bossSpawned[1] && t >= 7 * 60) {
     game.bossSpawned[1] = true;
     spawnEnemyAroundPlayer('bloodletting', 320, 360);
@@ -1506,11 +1510,10 @@ function spawnDirector(dt) {
     sfx.boss();
     shakeScreen(20);
   }
-  // Elite cleric beast — first one earlier, recurring faster
   if (t > 3 * 60) {
     game.eliteCd -= dt;
     if (game.eliteCd <= 0) {
-      game.eliteCd = Math.max(35, 70 - (t - 180) / 25);
+      game.eliteCd = Math.max(60, 100 - (t - 180) / 25);
       spawnEnemyAroundPlayer('cleric', 380, 460);
     }
   }
@@ -1519,24 +1522,41 @@ function spawnDirector(dt) {
   }
 }
 
+// Weighted spawn tables — common rabble dominates, dangerous units stay rare.
+const SPAWN_TABLES = [
+  [60,        [['townsfolk', 1]]],
+  [150,       [['townsfolk', 6], ['scourge', 1], ['rats', 0.5]]],
+  [240,       [['townsfolk', 5], ['scourge', 2], ['rats', 0.7], ['crow', 0.6]]],
+  [360,       [['townsfolk', 4], ['scourge', 3], ['rats', 0.8], ['crow', 1], ['bloodlicker', 0.4], ['brickTroll', 0.2]]],
+  [480,       [['townsfolk', 3], ['scourge', 3], ['rats', 0.8], ['crow', 1.4], ['bloodlicker', 0.7], ['brickTroll', 0.3]]],
+  [600,       [['townsfolk', 2], ['scourge', 3], ['rats', 0.6], ['crow', 1.6], ['bloodlicker', 1.0], ['brickTroll', 0.5]]],
+  [Infinity,  [['townsfolk', 1.5], ['scourge', 3], ['rats', 0.5], ['crow', 1.6], ['bloodlicker', 1.4], ['brickTroll', 0.7]]],
+];
+
+function weightedPick(table) {
+  let total = 0;
+  for (const e of table) total += e[1];
+  let r = Math.random() * total;
+  for (const e of table) {
+    if (r < e[1]) return e[0];
+    r -= e[1];
+  }
+  return table[table.length - 1][0];
+}
+
 function spawnByTime(t) {
-  // Selection table by elapsed time. Plague rats arrive in clumps.
   let table;
-  if (t < 60)        table = ['townsfolk'];
-  else if (t < 150)  table = ['townsfolk', 'townsfolk', 'scourge'];
-  else if (t < 240)  table = ['townsfolk', 'scourge', 'scourge', 'rats'];
-  else if (t < 360)  table = ['scourge', 'crow', 'rats', 'brickTroll'];
-  else if (t < 480)  table = ['scourge', 'crow', 'bloodlicker', 'brickTroll', 'rats'];
-  else if (t < 600)  table = ['crow', 'bloodlicker', 'brickTroll', 'scourge', 'rats'];
-  else               table = ['scourge', 'bloodlicker', 'brickTroll', 'rats', 'crow', 'scourge'];
-  const id = pick(table);
+  for (const e of SPAWN_TABLES) {
+    if (t < e[0]) { table = e[1]; break; }
+  }
+  const id = weightedPick(table);
   if (id === 'rats') {
-    // swarm: 4-6 rats arriving together
+    // Rat swarm — smaller groups than before so they don't overwhelm the table.
     const a = Math.random() * TAU;
     const r = Math.max(W, H) * 0.62 + rand(40, 100);
     const cx = player.x + Math.cos(a) * r;
     const cy = player.y + Math.sin(a) * r;
-    const n = randi(4, 7);
+    const n = randi(3, 6);
     for (let i = 0; i < n; i++) {
       spawnEnemy('plagueRat', cx + rand(-30, 30), cy + rand(-30, 30));
     }
