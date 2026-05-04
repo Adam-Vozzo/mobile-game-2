@@ -1265,8 +1265,8 @@ function spawnPotsInitial() {
     pots.push({
       x: player.x + Math.cos(a) * r,
       y: player.y + Math.sin(a) * r,
-      type: pick(['urn', 'urn', 'crate', 'lantern']),
-      bornAt: 0, wobble: Math.random() * TAU,
+      type: pick(['urn', 'urn', 'crate']),
+      bornAt: 0,
     });
   }
 }
@@ -1281,8 +1281,8 @@ function updatePots(dt) {
       pots.push({
         x: player.x + Math.cos(a) * r,
         y: player.y + Math.sin(a) * r,
-        type: pick(['urn', 'urn', 'crate', 'lantern']),
-        bornAt: game.time, wobble: Math.random() * TAU,
+        type: pick(['urn', 'urn', 'crate']),
+        bornAt: game.time,
       });
     }
   }
@@ -2022,49 +2022,71 @@ function render() {
 }
 
 function drawPots() {
+  // Pots are static scenery — no wobble, cool palette to separate from
+  // warm-toned enemies, smaller silhouettes than any mob.
   for (const p of pots) {
-    const wob = Math.sin(p.wobble + game.time * 1.6) * 0.4;
     ctx.save();
     ctx.translate(p.x, p.y);
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.beginPath(); ctx.ellipse(0, 6, 7, 2.2, 0, 0, TAU); ctx.fill();
-    ctx.translate(wob, 0);
+    // flat ground shadow (wider than tall — reads as a sitting object)
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath(); ctx.ellipse(0, 7, 8, 2.5, 0, 0, TAU); ctx.fill();
 
     if (p.type === 'urn') {
+      // Stone amphora — cool grey, distinct from any enemy in the game.
+      ctx.fillStyle = '#5a564c';
+      ctx.strokeStyle = '#2a2620';
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(-5, -8);
-      ctx.bezierCurveTo(-7, -4, -7, 4, -3, 6);
+      ctx.moveTo(-5, -7);
+      ctx.bezierCurveTo(-8, -3, -7, 4, -3, 6);
       ctx.lineTo(3, 6);
-      ctx.bezierCurveTo(7, 4, 7, -4, 5, -8);
-      ctx.lineTo(4, -10);
-      ctx.lineTo(-4, -10);
+      ctx.bezierCurveTo(7, 4, 8, -3, 5, -7);
+      ctx.lineTo(4, -9);
+      ctx.lineTo(-4, -9);
       ctx.closePath();
-      ctx.fillStyle = '#3a2418'; ctx.fill();
-      ctx.strokeStyle = '#8a5a38'; ctx.lineWidth = 1.2; ctx.stroke();
-      ctx.fillStyle = '#5a3a28';
-      ctx.fillRect(-5, -3, 10, 1.5);
-    } else if (p.type === 'crate') {
-      ctx.beginPath(); ctx.rect(-7, -8, 14, 13);
-      ctx.fillStyle = '#3a2818'; ctx.fill();
-      ctx.strokeStyle = '#8a6440'; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.fill(); ctx.stroke();
+      // dark mouth (top opening)
+      ctx.fillStyle = '#15120e';
       ctx.beginPath();
-      ctx.moveTo(-7, -8); ctx.lineTo(7, 5);
-      ctx.moveTo(7, -8);  ctx.lineTo(-7, 5);
+      ctx.ellipse(0, -9, 4, 1.4, 0, 0, TAU);
+      ctx.fill();
+      // pale stone bands
+      ctx.fillStyle = '#7c7468';
+      ctx.fillRect(-5.5, -3, 11, 1);
+      ctx.fillRect(-5.5, 1, 11, 0.7);
+      // gleam highlight (inanimate cue)
+      ctx.fillStyle = 'rgba(220,210,190,0.45)';
+      ctx.fillRect(-3, -6, 1.2, 2);
+    } else if (p.type === 'crate') {
+      // Wooden crate with brass corner caps and visible plank seams.
+      ctx.fillStyle = '#6a4220';
+      ctx.strokeStyle = '#1a0e08';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.rect(-7, -7, 14, 13);
+      ctx.fill(); ctx.stroke();
+      // vertical plank seams
+      ctx.strokeStyle = '#3a1e0c';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-2.5, -7); ctx.lineTo(-2.5, 6);
+      ctx.moveTo(2.5, -7);  ctx.lineTo(2.5, 6);
       ctx.stroke();
-    } else if (p.type === 'lantern') {
-      // post
-      ctx.fillStyle = '#1a0e0a';
-      ctx.fillRect(-1, -2, 2, 8);
-      ctx.strokeStyle = '#5a3a2a'; ctx.lineWidth = 1;
-      ctx.strokeRect(-1, -2, 2, 8);
-      // lamp body
-      ctx.beginPath(); ctx.rect(-5, -10, 10, 8);
-      ctx.fillStyle = '#3a2818'; ctx.fill();
-      ctx.strokeStyle = '#a07a48'; ctx.lineWidth = 1.2; ctx.stroke();
-      // unlit glass
-      ctx.fillStyle = 'rgba(60,40,20,0.6)';
-      ctx.fillRect(-3.5, -8.5, 7, 5);
+      // horizontal lid seam
+      ctx.beginPath();
+      ctx.moveTo(-7, -2); ctx.lineTo(7, -2);
+      ctx.stroke();
+      // brass corner reinforcements — strong inanimate signal
+      ctx.fillStyle = '#a07a3c';
+      ctx.strokeStyle = '#5a3a14';
+      ctx.lineWidth = 0.8;
+      const corners = [[-7, -7], [5, -7], [-7, 4], [5, 4]];
+      for (const [cx, cy] of corners) {
+        ctx.beginPath(); ctx.rect(cx, cy, 2, 2);
+        ctx.fill(); ctx.stroke();
+      }
+      // top gleam
+      ctx.fillStyle = 'rgba(245,220,180,0.4)';
+      ctx.fillRect(-5, -6, 3, 0.8);
     }
     ctx.restore();
   }
