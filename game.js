@@ -439,6 +439,7 @@ const PICKUP_TYPES = {
   echoMed:    { color: '#3a8fe6', glow: '#5fb0ff', xp: 5,   size: 5, shape: 'diamond' },
   echoLarge:  { color: '#a560ff', glow: '#c98aff', xp: 25,  size: 7, shape: 'diamond' },
   echoCrest:  { color: '#3ce0c8', glow: '#a0f0e0', xp: 125, size: 10, shape: 'star' },
+  insight:    { color: '#f5d98a', glow: '#fff5cc', insight: 1, size: 7, shape: 'rune' },
   heart:      { color: '#c41e3a', glow: '#ff4060', heal: 0.3, size: 6 },
   magnet:     { color: '#c9a961', glow: '#f5d98a', magnet: true, size: 6 },
   bomb:       { color: '#222', glow: '#ff6020', bomb: true, size: 7 },
@@ -457,9 +458,27 @@ function spawnPickup(type, x, y) {
 // Player & hunters
 // ============================================================
 const HUNTERS = {
-  hunter:      { name: 'The Hunter',     hp: 100, speed: 150, weapon: 'sawCleaver',   bonus: { speed: 1.0, dmg: 1.0, area: 1.0 } },
-  foreigner:   { name: 'The Foreigner',  hp: 80,  speed: 165, weapon: 'pistol',       bonus: { speed: 1.1, dmg: 1.1, area: 0.95 } },
-  executioner: { name: 'The Executioner',hp: 130, speed: 138, weapon: 'threadedCane', bonus: { speed: 0.95, dmg: 1.0, area: 1.15 } },
+  hunter: {
+    name: 'The Hunter', hp: 100, speed: 150, weapon: 'sawCleaver',
+    bonus: { speed: 1.0, dmg: 1.0, area: 1.0 },
+    passive: 'vigil',
+    passiveName: "Workshop Vigil",
+    passiveDesc: 'Slow regeneration of stolen blood — +0.5 HP/sec.',
+  },
+  foreigner: {
+    name: 'The Foreigner', hp: 80, speed: 165, weapon: 'pistol',
+    bonus: { speed: 1.1, dmg: 1.1, area: 0.95 },
+    passive: 'marksman',
+    passiveName: "Marksman",
+    passiveDesc: 'Bullets and other projectiles strike harder — +25% projectile damage.',
+  },
+  executioner: {
+    name: 'The Executioner', hp: 130, speed: 138, weapon: 'threadedCane',
+    bonus: { speed: 0.95, dmg: 1.0, area: 1.15 },
+    passive: 'stalwart',
+    passiveName: "Stalwart",
+    passiveDesc: 'Heavy garb softens incoming blows — 25% damage reduction.',
+  },
 };
 
 // Distinct silhouettes per hunter — coat colour, hat shape, eye glow, and a
@@ -535,8 +554,17 @@ function recomputeStats() {
   player.durationMul = 1;
   player.regen = 0;
   player.pickupRadius = 60 * (player.metaPickupMul || 1);
+  // Hunter passive defaults
+  player.projDmgMul = 1;
+  player.dmgReduce = 0;
   let speedMul = h.bonus.speed * (player.metaSpeedMul || 1);
   let maxHpBonus = 0;
+  // Apply hunter-specific passive perk before player passives stack on top.
+  switch (h.passive) {
+    case 'vigil':     player.regen += 0.5; break;
+    case 'marksman':  player.projDmgMul = 1.25; break;
+    case 'stalwart':  player.dmgReduce = 0.25; break;
+  }
   const apply = (m) => {
     if (m.dmg)       player.dmgMul *= m.dmg;
     if (m.area)      player.areaMul *= m.area;
@@ -777,7 +805,7 @@ const WEAPONS = {
       if (!target) { w.cd = 0.2; return; }
       const baseInt = 0.95 - lv * 0.07;
       w.cd = Math.max(0.2, baseInt) * player.cdMul;
-      const dmg = (10 + lv * 5) * player.dmgMul;
+      const dmg = (10 + lv * 5) * player.dmgMul * player.projDmgMul;
       const speed = (380 + lv * 18) * player.projSpeedMul;
       const count = 1 + Math.floor((lv - 1) / 2) + player.amountBonus;
       const pierce = lv >= 8 ? 2 : (lv >= 6 ? 1 : 0);
@@ -936,44 +964,33 @@ const WEAPONS = {
           }
         }
       }
-      // Continuous rim embers (here, not in draw, so they pause cleanly).
-      if (Math.random() < 0.5) {
+      // Sparse rim ember — about a fifth of the previous rate.
+      if (Math.random() < 0.1) {
         const a = Math.random() * TAU;
         particles.push({ type: 'spark',
           x: player.x + Math.cos(a) * baseR,
           y: player.y + Math.sin(a) * baseR,
-          vx: Math.cos(a) * 30, vy: Math.sin(a) * 30 - 20,
-          life: 0.4, max: 0.4, size: 1.5, color: '#ffaa50' });
+          vx: Math.cos(a) * 20, vy: Math.sin(a) * 20 - 15,
+          life: 0.35, max: 0.35, size: 1.3, color: '#ffaa50' });
       }
     },
     draw(w) {
       if (!w.state.r) return;
       const r = w.state.r;
-      const pulse = 1 + Math.sin(game.time * 4) * 0.04;
-      const rr = r * pulse;
-      // inner warm glow
+      // soft inner glow
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
-      const grad = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, rr);
-      grad.addColorStop(0, 'rgba(255,180,90,0.32)');
-      grad.addColorStop(0.6, 'rgba(196,30,58,0.14)');
+      const grad = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, r);
+      grad.addColorStop(0, 'rgba(255,170,80,0.16)');
+      grad.addColorStop(0.6, 'rgba(196,30,58,0.05)');
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(player.x, player.y, rr, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(player.x, player.y, r, 0, TAU); ctx.fill();
       ctx.restore();
-      // bright inner ring
-      ctx.strokeStyle = `rgba(255,200,120,${0.45 + Math.sin(game.time * 3) * 0.12})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(player.x, player.y, rr, 0, TAU); ctx.stroke();
-      // dashed sigil ring drifting around the boundary
-      ctx.save();
-      ctx.strokeStyle = 'rgba(245,220,160,0.55)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([10, 8]);
-      ctx.lineDashOffset = -game.time * 28;
-      ctx.beginPath(); ctx.arc(player.x, player.y, rr - 3, 0, TAU); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
+      // single thin boundary ring — readable but quiet
+      ctx.strokeStyle = 'rgba(255,180,100,0.22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(player.x, player.y, r, 0, TAU); ctx.stroke();
     },
   },
 
@@ -1069,7 +1086,7 @@ const WEAPONS = {
       const count = 1 + Math.floor((lv - 1) / 4);
       const targets = nearestEnemies(player.x, player.y, 380, count);
       if (targets.length === 0) { w.cd = 0.4; return; }
-      const dmg = (10 + lv * 3) * player.dmgMul;
+      const dmg = (10 + lv * 3) * player.dmgMul * player.projDmgMul;
       const dur = (3.0 + (lv >= 8 ? 3 : 0)) * player.durationMul;
       const radius = (50 + lv * 5) * player.areaMul;
       for (const t of targets) {
@@ -1133,27 +1150,28 @@ const PASSIVES = {
 };
 
 // ============================================================
-// Meta-progression — persistent perks bought with echoes between runs
+// Meta-progression — persistent perks bought with Insight, a rare
+// currency that drops only from elites, bosses and lanterns.
 // ============================================================
-const SAVE_KEY = 'yharnam_save_v1';
+const SAVE_KEY = 'yharnam_save_v2';
 
 const META_DEFS = {
-  might:     { name: 'Might',     icon: '☩', max: 5, baseCost: 50,  desc: '+10% damage per level' },
-  vitality:  { name: 'Vitality',  icon: '✚', max: 5, baseCost: 60,  desc: '+15 max HP per level' },
-  swiftness: { name: 'Swiftness', icon: '⚘', max: 5, baseCost: 50,  desc: '+5% move speed per level' },
-  avarice:   { name: 'Avarice',   icon: '✥', max: 5, baseCost: 60,  desc: '+12% pickup radius per level' },
-  insight:   { name: 'Insight',   icon: '✦', max: 3, baseCost: 100, desc: '+1 reroll per run per level' },
-  thrift:    { name: 'Thrift',    icon: '◇', max: 3, baseCost: 80,  desc: '+15% echoes earned per level' },
+  might:     { name: 'Might',     icon: '☩', max: 5, baseCost: 3, desc: '+10% damage per level' },
+  vitality:  { name: 'Vitality',  icon: '✚', max: 5, baseCost: 3, desc: '+15 max HP per level' },
+  swiftness: { name: 'Swiftness', icon: '⚘', max: 5, baseCost: 3, desc: '+5% move speed per level' },
+  avarice:   { name: 'Avarice',   icon: '✥', max: 5, baseCost: 4, desc: '+12% pickup radius per level' },
+  counsel:   { name: 'Counsel',   icon: '✦', max: 3, baseCost: 6, desc: '+1 reroll per run per level' },
+  thrift:    { name: 'Thrift',    icon: '◇', max: 3, baseCost: 5, desc: '+20% insight earned per level' },
 };
 
 const meta = {
-  totalEchoes: 0,
-  perks: { might: 0, vitality: 0, swiftness: 0, avarice: 0, insight: 0, thrift: 0 },
+  totalInsight: 0,
+  perks: { might: 0, vitality: 0, swiftness: 0, avarice: 0, counsel: 0, thrift: 0 },
 };
 
 function perkCost(id) {
   const lv = meta.perks[id];
-  return Math.floor(META_DEFS[id].baseCost * Math.pow(1.6, lv));
+  return Math.floor(META_DEFS[id].baseCost * Math.pow(1.7, lv));
 }
 
 function loadMeta() {
@@ -1161,7 +1179,7 @@ function loadMeta() {
     const s = localStorage.getItem(SAVE_KEY);
     if (!s) return;
     const data = JSON.parse(s);
-    if (typeof data.totalEchoes === 'number') meta.totalEchoes = data.totalEchoes;
+    if (typeof data.totalInsight === 'number') meta.totalInsight = data.totalInsight;
     if (data.perks) {
       for (const k in meta.perks) {
         if (typeof data.perks[k] === 'number') meta.perks[k] = data.perks[k];
@@ -1173,14 +1191,16 @@ function loadMeta() {
 function saveMeta() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      totalEchoes: meta.totalEchoes, perks: meta.perks,
+      totalInsight: meta.totalInsight, perks: meta.perks,
     }));
   } catch (e) { /* ignore */ }
 }
 
-function awardEchoes() {
-  const earned = Math.floor(game.echoes * (1 + meta.perks.thrift * 0.15));
-  meta.totalEchoes += earned;
+function grantInsight(n) {
+  // Apply Thrift bonus on collect rather than at run-end so the player
+  // sees the bonus reflected immediately.
+  const earned = Math.max(1, Math.round(n * (1 + meta.perks.thrift * 0.20)));
+  meta.totalInsight += earned;
   saveMeta();
 }
 
@@ -1188,8 +1208,8 @@ function buyPerk(id) {
   const def = META_DEFS[id];
   if (meta.perks[id] >= def.max) return;
   const cost = perkCost(id);
-  if (meta.totalEchoes < cost) return;
-  meta.totalEchoes -= cost;
+  if (meta.totalInsight < cost) return;
+  meta.totalInsight -= cost;
   meta.perks[id]++;
   saveMeta();
   renderDreamPanel();
@@ -1201,7 +1221,7 @@ function applyMetaPerks() {
   player.metaHpBonus = meta.perks.vitality * 15;
   player.metaSpeedMul = 1 + meta.perks.swiftness * 0.05;
   player.metaPickupMul = 1 + meta.perks.avarice * 0.12;
-  player.rerolls = 1 + meta.perks.insight;
+  player.rerolls = 1 + meta.perks.counsel;
   player.maxHp += player.metaHpBonus;
   player.hp = player.maxHp;
 }
@@ -1243,17 +1263,15 @@ function updateLanterns(dt) {
 }
 
 function grantLanternReward(l) {
-  for (let i = 0; i < 6; i++) {
-    spawnPickup('echoLarge', l.x + rand(-25, 25), l.y + rand(-25, 25));
-  }
-  for (const p of pickups) {
-    const def = PICKUP_TYPES[p.type];
-    if (def.xp) p.attracted = true;
-  }
-  player.hp = Math.min(player.maxHp, player.hp + 25);
-  shakeScreen(7);
-  emitSpark(l.x, l.y, 50, '#f5d98a');
-  sfx.levelup();
+  // Modest reward: a single large echo and two pieces of Insight (the rare
+  // meta currency). No more magnetism pulse or HP heal — the lantern is a
+  // signpost, not a refill.
+  spawnPickup('echoLarge', l.x, l.y);
+  spawnPickup('insight', l.x - 10, l.y - 6);
+  spawnPickup('insight', l.x + 10, l.y - 6);
+  shakeScreen(4);
+  emitSpark(l.x, l.y, 24, '#f5d98a');
+  sfx.pickupBig();
 }
 
 // ============================================================
@@ -1449,17 +1467,21 @@ function killEnemy(e) {
   }
   const r = Math.random();
   if (e.boss) {
-    // Bosses drop a gold reward chest plus echoes — biggest payout in the run.
+    // Bosses drop a gold reward chest plus echoes and a handful of Insight.
     spawnChest(e.x, e.y, 'gold');
     spawnPickup('echoLarge', e.x + 24, e.y);
     spawnPickup('echoLarge', e.x - 24, e.y);
+    for (let i = 0; i < 5; i++) {
+      spawnPickup('insight', e.x + rand(-26, 26), e.y + rand(-26, 26));
+    }
     shakeScreen(14);
     sfx.hitBig();
     sfx.victory();
   } else if (e.elite) {
-    // Elites (cleric beasts and promoted regulars) drop a silver chest.
+    // Elites drop a silver chest and one Insight.
     spawnChest(e.x, e.y, 'silver');
     spawnPickup('echoMed', e.x, e.y);
+    spawnPickup('insight', e.x, e.y - 12);
     if (e.promoted) shakeScreen(5);
   } else {
     if (r < 0.004)       spawnPickup('heart',  e.x, e.y);
@@ -1483,6 +1505,8 @@ function damagePlayer(amount) {
     sfx.swing();
     return;
   }
+  // Hunter passive: stalwart applies a flat damage reduction.
+  if (player.dmgReduce) amount *= (1 - player.dmgReduce);
   player.hp -= amount;
   player.hitFlash = 0.3;
   player.iframes = 0.6;
@@ -1895,8 +1919,12 @@ function collectPickup(p) {
   const def = PICKUP_TYPES[p.type];
   if (def.xp) {
     grantXp(def.xp);
-    if (p.type === 'echoLarge') sfx.pickupBig(); else sfx.pickup();
+    if (p.type === 'echoLarge' || p.type === 'echoCrest') sfx.pickupBig(); else sfx.pickup();
     game.echoes += def.xp;
+  } else if (def.insight) {
+    grantInsight(def.insight);
+    sfx.pickupBig();
+    emitSpark(player.x, player.y, 14, '#f5d98a');
   } else if (def.heal) {
     player.hp = Math.min(player.maxHp, player.hp + def.heal * player.maxHp);
     sfx.pickupBig();
@@ -2328,6 +2356,22 @@ function drawPickups() {
         ctx.lineWidth = 1;
         ctx.stroke();
       }
+    } else if (def.insight) {
+      // Three-pointed rune — rarer silhouette to mark the meta currency.
+      const r = def.size;
+      ctx.moveTo(0, -r);
+      ctx.lineTo(r * 0.866, r * 0.5);
+      ctx.lineTo(-r * 0.866, r * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = def.glow;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      // glowing eye in the centre
+      ctx.fillStyle = def.glow;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.22, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1a0e08';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.1, 0, TAU); ctx.fill();
     } else if (def.heal) {
       // heart
       const r = def.size;
@@ -2872,14 +2916,29 @@ const ui = {
   vLevel: document.getElementById('vLevel'),
   vKills: document.getElementById('vKills'),
   vEcho: document.getElementById('vEcho'),
-  dreamPanel: document.getElementById('dreamPanel'),
-  dreamEchoes: document.getElementById('dreamEchoes'),
+  dreamBtn: document.getElementById('dreamBtn'),
+  dreamModal: document.getElementById('dreamModal'),
+  dreamCloseBtn: document.getElementById('dreamCloseBtn'),
+  dreamInsight: document.getElementById('dreamInsight'),
   dreamPerks: document.getElementById('dreamPerks'),
 };
 
+function openDream() {
+  renderDreamPanel();
+  ui.dreamModal.classList.remove('hidden');
+}
+function closeDream() {
+  ui.dreamModal.classList.add('hidden');
+}
+ui.dreamBtn.addEventListener('click', () => { ensureAudio(); openDream(); });
+ui.dreamCloseBtn.addEventListener('click', closeDream);
+ui.dreamModal.addEventListener('click', (e) => {
+  if (e.target === ui.dreamModal) closeDream();
+});
+
 function renderDreamPanel() {
-  if (!ui.dreamEchoes) return;
-  ui.dreamEchoes.textContent = meta.totalEchoes;
+  if (!ui.dreamInsight) return;
+  ui.dreamInsight.textContent = meta.totalInsight;
   const html = Object.entries(META_DEFS).map(([id, def]) => {
     const lv = meta.perks[id];
     const maxed = lv >= def.max;

@@ -51,33 +51,44 @@
     <div class="hunters">
       <button class="hunter-card selected" data-hunter="hunter">
         <div class="hunter-portrait portrait-hunter"></div>
-        <div class="hunter-name">The Hunter</div>
-        <div class="hunter-desc">Saw Cleaver. Balanced, swift.</div>
+        <div class="hunter-body">
+          <div class="hunter-name">The Hunter</div>
+          <div class="hunter-desc">Saw Cleaver. Balanced, swift.</div>
+          <div class="hunter-passive">✦ Workshop Vigil — +0.5 HP/sec regen</div>
+        </div>
       </button>
       <button class="hunter-card" data-hunter="foreigner">
         <div class="hunter-portrait portrait-foreigner"></div>
-        <div class="hunter-name">The Foreigner</div>
-        <div class="hunter-desc">Hunter's Pistol. Frail, deadly at range.</div>
+        <div class="hunter-body">
+          <div class="hunter-name">The Foreigner</div>
+          <div class="hunter-desc">Hunter's Pistol. Frail, deadly at range.</div>
+          <div class="hunter-passive">✦ Marksman — +25% projectile damage</div>
+        </div>
       </button>
       <button class="hunter-card" data-hunter="executioner">
         <div class="hunter-portrait portrait-executioner"></div>
-        <div class="hunter-name">The Executioner</div>
-        <div class="hunter-desc">Threaded Cane. Hardy, sweeping reach.</div>
+        <div class="hunter-body">
+          <div class="hunter-name">The Executioner</div>
+          <div class="hunter-desc">Threaded Cane. Hardy, sweeping reach.</div>
+          <div class="hunter-passive">✦ Stalwart — 25% damage reduction</div>
+        </div>
       </button>
     </div>
     <button id="startBtn" class="btn btn-primary">Awaken</button>
-    <div class="title-hint">Drag the left side of the screen to move. Weapons strike on their own.</div>
+    <button id="dreamBtn" class="btn btn-ghost">Hunter's Dream</button>
+    <div class="title-hint">Drag anywhere to move. Weapons strike on their own.</div>
+  </div>
+</div>
 
-    <details class="dream-panel" id="dreamPanel">
-      <summary class="dream-summary">
-        <span class="title-flourish">— Hunter's Dream —</span>
-        <span class="dream-echoes">◈ <b id="dreamEchoes">0</b> echoes</span>
-      </summary>
-      <div class="dream-body">
-        <div class="dream-blurb">Echoes earned from past hunts may be spent here. Boons persist between runs.</div>
-        <div id="dreamPerks" class="dream-perks"></div>
-      </div>
-    </details>
+<!-- Hunter's Dream meta-progression modal -->
+<div id="dreamModal" class="overlay hidden">
+  <div class="dream-modal-content">
+    <div class="title-flourish">— Hunter's Dream —</div>
+    <h2 class="level-title">Boons of the Old Hunters</h2>
+    <div class="dream-blurb">Insight is a rare currency, gleaned from elites, bosses, and the lanterns of Yharnam. Spend it here on boons that persist between hunts.</div>
+    <div class="dream-currency">◈ <b id="dreamInsight">0</b> insight</div>
+    <div id="dreamPerks" class="dream-perks"></div>
+    <button id="dreamCloseBtn" class="btn btn-primary">Return</button>
   </div>
 </div>
 
