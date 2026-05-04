@@ -673,3 +673,161 @@ body {
 
 .pause-stats span { color: var(--ash); }
 .pause-stats b { color: var(--gold); }
+
+/* Hunter's Dream meta-progression panel */
+
+.dream-panel {
+  width: 100%;
+  margin-top: 14px;
+  background: linear-gradient(180deg, rgba(20, 9, 12, 0.85), rgba(10, 6, 8, 0.85));
+  border: 1px solid var(--gold-dim);
+  border-radius: 2px;
+  text-align: left;
+}
+
+.dream-panel[open] { box-shadow: 0 0 22px rgba(196, 30, 58, 0.18), inset 0 0 16px rgba(0, 0, 0, 0.5); }
+
+.dream-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+  gap: 10px;
+}
+
+.dream-summary::-webkit-details-marker { display: none; }
+
+.dream-summary::after {
+  content: '▾';
+  color: var(--gold-dim);
+  font-size: 11px;
+  transition: transform 0.2s;
+}
+
+.dream-panel[open] .dream-summary::after { transform: rotate(180deg); }
+
+.dream-summary .dream-echoes {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--gold);
+}
+
+.dream-summary .dream-echoes b {
+  color: var(--bone);
+}
+
+.dream-body {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dream-blurb {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--ash);
+  line-height: 1.4;
+}
+
+.dream-perks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+@media (min-width: 480px) {
+  .dream-perks { grid-template-columns: 1fr 1fr; }
+}
+
+.dream-perk {
+  background: rgba(20, 9, 12, 0.5);
+  border: 1px solid var(--gold-dim);
+  border-left: 3px solid var(--gold-dim);
+  border-radius: 2px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--bone);
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.dream-perk.affordable { border-left-color: var(--blood-bright); }
+
+.dream-perk:active:not(:disabled) {
+  background: rgba(74, 10, 13, 0.6);
+  transform: scale(0.98);
+}
+
+.dream-perk:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dream-perk-icon {
+  width: 28px;
+  height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  color: var(--gold);
+  flex-shrink: 0;
+  text-shadow: 0 0 6px rgba(196, 30, 58, 0.4);
+}
+
+.dream-perk-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dream-perk-name {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--bone);
+  font-weight: 700;
+}
+
+.dream-perk-desc {
+  font-size: 11px;
+  color: var(--ash);
+  font-style: italic;
+  margin-top: 1px;
+}
+
+.dream-perk-pips {
+  display: flex;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.dream-perk-pip {
+  width: 6px;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--gold-dim);
+  border-radius: 1px;
+}
+
+.dream-perk-pip.filled {
+  background: var(--gold);
+  box-shadow: 0 0 4px rgba(201, 169, 97, 0.6);
+}
+
+.dream-perk-cost {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.dream-perk:disabled .dream-perk-cost {
+  color: var(--ash);
+}

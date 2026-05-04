@@ -510,14 +510,14 @@ function resetPlayer(hunterId) {
 
 function recomputeStats() {
   const h = HUNTERS[game.hunter] || HUNTERS.hunter;
-  player.dmgMul = h.bonus.dmg;
+  player.dmgMul = h.bonus.dmg * (player.metaDmgMul || 1);
   player.areaMul = h.bonus.area;
   player.cdMul = 1;
   player.projSpeedMul = 1;
   player.durationMul = 1;
   player.regen = 0;
-  player.pickupRadius = 60;
-  let speedMul = h.bonus.speed;
+  player.pickupRadius = 60 * (player.metaPickupMul || 1);
+  let speedMul = h.bonus.speed * (player.metaSpeedMul || 1);
   let maxHpBonus = 0;
   const apply = (m) => {
     if (m.dmg)       player.dmgMul *= m.dmg;
@@ -534,7 +534,7 @@ function recomputeStats() {
     PASSIVES[p.id].apply(p.level, apply);
   }
   player.speed = player.baseSpeed * speedMul;
-  const newMax = HUNTERS[game.hunter].hp + maxHpBonus;
+  const newMax = HUNTERS[game.hunter].hp + (player.metaHpBonus || 0) + maxHpBonus;
   if (newMax > player.maxHp) {
     const heal = newMax - player.maxHp;
     player.maxHp = newMax;
@@ -562,9 +562,19 @@ const ENEMY_TYPES = {
     eye: '#ffb840', shape: 'beast',
   },
   crow: {
-    name: 'Crow Hunter', hp: 30, speed: 55, dmg: 16, r: 12, xp: 'echoMed',
+    name: 'Crow Hunter', hp: 30, speed: 60, dmg: 16, r: 12, xp: 'echoMed',
     color: '#1a1a2a', accent: '#5a5a6a', rim: '#7a7a8a', halo: 'rgba(40,40,70,0.3)',
-    eye: '#d8e0f0', shape: 'crow', ranged: true, fireRate: 2.4, projSpeed: 220, projDmg: 12,
+    eye: '#d8e0f0', shape: 'crow', ranged: true, fireRate: 4.5, projSpeed: 170, projDmg: 7,
+  },
+  brickTroll: {
+    name: 'Brick Troll', hp: 110, speed: 36, dmg: 22, r: 19, xp: 'echoMed',
+    color: '#3a2a1a', accent: '#5a4030', rim: '#7a5a40', halo: 'rgba(80,55,30,0.35)',
+    eye: '#ffaa30', shape: 'troll',
+  },
+  plagueRat: {
+    name: 'Plague Rat', hp: 6, speed: 110, dmg: 5, r: 7, xp: 'echoSmall',
+    color: '#1a1410', accent: '#3a2a20', rim: '#5a4830', halo: 'rgba(50,35,20,0.22)',
+    eye: '#ff3838', shape: 'rat',
   },
   bloodlicker: {
     name: 'Bloodlicker', hp: 14, speed: 95, dmg: 22, r: 12, xp: 'echoSmall',
@@ -577,12 +587,12 @@ const ENEMY_TYPES = {
     eye: '#ff3030', shape: 'cleric', elite: true,
   },
   bloodletting: {
-    name: 'Bloodletting Beast', hp: 1400, speed: 48, dmg: 36, r: 38, xp: 'echoLarge',
+    name: 'Bloodletting Beast', hp: 6000, speed: 48, dmg: 36, r: 38, xp: 'echoLarge',
     color: '#3a0c10', accent: '#8a1018', rim: '#c82030', halo: 'rgba(160,15,25,0.55)',
     eye: '#ff2020', shape: 'boss', boss: true,
   },
   moonPresence: {
-    name: 'Moon Presence', hp: 4500, speed: 56, dmg: 50, r: 44, xp: 'echoLarge',
+    name: 'Moon Presence', hp: 16000, speed: 56, dmg: 50, r: 44, xp: 'echoLarge',
     color: '#3a3045', accent: '#604858', rim: '#9080a0', halo: 'rgba(180,160,210,0.35)',
     eye: '#f0e0ff', shape: 'moon', boss: true,
   },
@@ -883,7 +893,6 @@ const WEAPONS = {
           }
         }
         if (lv >= 8) {
-          // pulse: emit ring particles
           for (let i = 0; i < 14; i++) {
             const a = i / 14 * TAU;
             particles.push({ type: 'spark', x: player.x + Math.cos(a) * 10, y: player.y + Math.sin(a) * 10,
@@ -891,18 +900,113 @@ const WEAPONS = {
           }
         }
       }
+      // Continuous rim embers (here, not in draw, so they pause cleanly).
+      if (Math.random() < 0.5) {
+        const a = Math.random() * TAU;
+        particles.push({ type: 'spark',
+          x: player.x + Math.cos(a) * baseR,
+          y: player.y + Math.sin(a) * baseR,
+          vx: Math.cos(a) * 30, vy: Math.sin(a) * 30 - 20,
+          life: 0.4, max: 0.4, size: 1.5, color: '#ffaa50' });
+      }
     },
     draw(w) {
       if (!w.state.r) return;
+      const r = w.state.r;
+      const pulse = 1 + Math.sin(game.time * 4) * 0.04;
+      const rr = r * pulse;
+      // inner warm glow
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
-      const r = w.state.r;
-      const grad = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, r);
-      grad.addColorStop(0, 'rgba(255,180,90,0.18)');
-      grad.addColorStop(0.6, 'rgba(196,30,58,0.07)');
+      const grad = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, rr);
+      grad.addColorStop(0, 'rgba(255,180,90,0.32)');
+      grad.addColorStop(0.6, 'rgba(196,30,58,0.14)');
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(player.x, player.y, r, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(player.x, player.y, rr, 0, TAU); ctx.fill();
+      ctx.restore();
+      // bright inner ring
+      ctx.strokeStyle = `rgba(255,200,120,${0.45 + Math.sin(game.time * 3) * 0.12})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(player.x, player.y, rr, 0, TAU); ctx.stroke();
+      // dashed sigil ring drifting around the boundary
+      ctx.save();
+      ctx.strokeStyle = 'rgba(245,220,160,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -game.time * 28;
+      ctx.beginPath(); ctx.arc(player.x, player.y, rr - 3, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    },
+  },
+
+  // Cainhurst Bulwark — periodic damage-mitigating shield, deflects bullets
+  bulwark: {
+    name: 'Cainhurst Bulwark', icon: '◯', tag: 'Trick',
+    desc: 'Forbidden glass that turns aside the unworthy.',
+    max: 8,
+    levels: [
+      { desc: 'A shimmer briefly wards off bullets and softens blows.' },
+      { desc: 'Shield rises more often.' },
+      { desc: 'Shield lasts longer.' },
+      { desc: 'Bullets shatter against the glass for damage.' },
+      { desc: 'Greater damage reduction.' },
+      { desc: 'Shield rises more often. Shatter sparks fan out.' },
+      { desc: 'Shield lasts longer.' },
+      { desc: 'A near-permanent ward — almost no respite from the glass.' },
+    ],
+    update(dt, w) {
+      const lv = w.level;
+      const cdMax = Math.max(2.0, (8.5 - lv * 0.6)) * player.cdMul;
+      const durMax = (2.2 + lv * 0.35) * player.durationMul;
+      w.state.lv = lv;
+      w.state.deflect = lv >= 4;
+      w.state.reduce = lv >= 5 ? 0.55 : 0.4;
+      if (w.state.cd === undefined) {
+        w.state.cd = cdMax;
+        w.state.dur = 0;
+      }
+      if (w.state.dur > 0) {
+        w.state.dur -= dt;
+        if (w.state.dur <= 0) {
+          w.state.dur = 0;
+          w.state.cd = cdMax;
+        }
+      } else {
+        w.state.cd -= dt;
+        if (w.state.cd <= 0) {
+          w.state.dur = durMax;
+          sfx.pickup();
+        }
+      }
+      w.state.active = w.state.dur > 0;
+    },
+    draw(w) {
+      if (!w.state.active) return;
+      const r = 24;
+      const ang = game.time * 1.4;
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      // bright outer ring
+      ctx.strokeStyle = 'rgba(245,220,160,0.85)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,240,200,0.35)';
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+      // rotating runes
+      for (let i = 0; i < 6; i++) {
+        const a = ang + i / 6 * TAU;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(a + Math.PI / 2);
+        ctx.fillStyle = 'rgba(255,235,180,0.95)';
+        ctx.fillRect(-2, -3, 4, 6);
+        ctx.restore();
+      }
       ctx.restore();
     },
   },
@@ -994,6 +1098,130 @@ const PASSIVES = {
 };
 
 // ============================================================
+// Meta-progression — persistent perks bought with echoes between runs
+// ============================================================
+const SAVE_KEY = 'yharnam_save_v1';
+
+const META_DEFS = {
+  might:     { name: 'Might',     icon: '☩', max: 5, baseCost: 50,  desc: '+10% damage per level' },
+  vitality:  { name: 'Vitality',  icon: '✚', max: 5, baseCost: 60,  desc: '+15 max HP per level' },
+  swiftness: { name: 'Swiftness', icon: '⚘', max: 5, baseCost: 50,  desc: '+5% move speed per level' },
+  avarice:   { name: 'Avarice',   icon: '✥', max: 5, baseCost: 60,  desc: '+12% pickup radius per level' },
+  insight:   { name: 'Insight',   icon: '✦', max: 3, baseCost: 100, desc: '+1 reroll per run per level' },
+  thrift:    { name: 'Thrift',    icon: '◇', max: 3, baseCost: 80,  desc: '+15% echoes earned per level' },
+};
+
+const meta = {
+  totalEchoes: 0,
+  perks: { might: 0, vitality: 0, swiftness: 0, avarice: 0, insight: 0, thrift: 0 },
+};
+
+function perkCost(id) {
+  const lv = meta.perks[id];
+  return Math.floor(META_DEFS[id].baseCost * Math.pow(1.6, lv));
+}
+
+function loadMeta() {
+  try {
+    const s = localStorage.getItem(SAVE_KEY);
+    if (!s) return;
+    const data = JSON.parse(s);
+    if (typeof data.totalEchoes === 'number') meta.totalEchoes = data.totalEchoes;
+    if (data.perks) {
+      for (const k in meta.perks) {
+        if (typeof data.perks[k] === 'number') meta.perks[k] = data.perks[k];
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function saveMeta() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      totalEchoes: meta.totalEchoes, perks: meta.perks,
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+function awardEchoes() {
+  const earned = Math.floor(game.echoes * (1 + meta.perks.thrift * 0.15));
+  meta.totalEchoes += earned;
+  saveMeta();
+}
+
+function buyPerk(id) {
+  const def = META_DEFS[id];
+  if (meta.perks[id] >= def.max) return;
+  const cost = perkCost(id);
+  if (meta.totalEchoes < cost) return;
+  meta.totalEchoes -= cost;
+  meta.perks[id]++;
+  saveMeta();
+  renderDreamPanel();
+  sfx.pickupBig();
+}
+
+function applyMetaPerks() {
+  player.metaDmgMul = 1 + meta.perks.might * 0.10;
+  player.metaHpBonus = meta.perks.vitality * 15;
+  player.metaSpeedMul = 1 + meta.perks.swiftness * 0.05;
+  player.metaPickupMul = 1 + meta.perks.avarice * 0.12;
+  player.rerolls = 1 + meta.perks.insight;
+  player.maxHp += player.metaHpBonus;
+  player.hp = player.maxHp;
+}
+
+// ============================================================
+// Lantern of Insight — periodic waypoint reward
+// ============================================================
+const lanterns = [];
+const LANTERN_LIFETIME = 75;
+
+function spawnLantern() {
+  const a = Math.random() * TAU;
+  const r = rand(560, 920);
+  lanterns.push({
+    x: player.x + Math.cos(a) * r,
+    y: player.y + Math.sin(a) * r,
+    bornAt: game.time,
+    expires: game.time + LANTERN_LIFETIME,
+    pulse: 0,
+  });
+  sfx.pickup();
+}
+
+function updateLanterns(dt) {
+  game.lanternCd -= dt;
+  if (game.lanternCd <= 0 && lanterns.length === 0) {
+    game.lanternCd = 55;
+    spawnLantern();
+  }
+  for (let i = lanterns.length - 1; i >= 0; i--) {
+    const l = lanterns[i];
+    l.pulse += dt;
+    if (game.time > l.expires) { lanterns.splice(i, 1); continue; }
+    if (dist2(l.x, l.y, player.x, player.y) < 30 * 30) {
+      grantLanternReward(l);
+      lanterns.splice(i, 1);
+    }
+  }
+}
+
+function grantLanternReward(l) {
+  for (let i = 0; i < 6; i++) {
+    spawnPickup('echoLarge', l.x + rand(-25, 25), l.y + rand(-25, 25));
+  }
+  for (const p of pickups) {
+    const def = PICKUP_TYPES[p.type];
+    if (def.xp) p.attracted = true;
+  }
+  player.hp = Math.min(player.maxHp, player.hp + 25);
+  shakeScreen(7);
+  emitSpark(l.x, l.y, 50, '#f5d98a');
+  sfx.levelup();
+}
+
+// ============================================================
 // Game state
 // ============================================================
 const game = {
@@ -1006,7 +1234,10 @@ const game = {
   hunter: 'hunter',
   spawnAcc: 0,
   bossSpawned: { 1: false, 2: false },
-  victoryAt: 30 * 60, // 30 minutes
+  victoryAt: 15 * 60, // 15 minutes
+  lanternCd: 35,
+  gemMergeCd: 0,
+  eliteCd: 60,
 };
 
 // ============================================================
@@ -1051,9 +1282,9 @@ function killEnemy(e) {
     spawnPickup('echoMed', e.x, e.y);
     if (r < 0.3) spawnPickup('heart', e.x + 8, e.y - 6);
   } else {
-    if (r < 0.012) spawnPickup('heart', e.x, e.y);
-    else if (r < 0.02) spawnPickup('magnet', e.x, e.y);
-    else if (r < 0.024) spawnPickup('bomb', e.x, e.y);
+    if (r < 0.004) spawnPickup('heart', e.x, e.y);
+    else if (r < 0.0065) spawnPickup('magnet', e.x, e.y);
+    else if (r < 0.008) spawnPickup('bomb', e.x, e.y);
   }
   if (e.boss) {
     shakeScreen(12);
@@ -1061,13 +1292,21 @@ function killEnemy(e) {
   }
 }
 
+function shieldState() {
+  const w = player.weapons.find(w => w.id === 'bulwark');
+  return (w && w.state.active) ? w.state : null;
+}
+
 function damagePlayer(amount) {
   if (player.iframes > 0) return;
+  const shield = shieldState();
+  if (shield) amount *= (1 - shield.reduce);
   player.hp -= amount;
   player.hitFlash = 0.3;
   player.iframes = 0.6;
-  shakeScreen(6);
-  emitBlood(player.x, player.y, 8);
+  shakeScreen(shield ? 3 : 6);
+  emitBlood(player.x, player.y, shield ? 4 : 8);
+  if (shield) emitSpark(player.x, player.y, 6, '#f5e6c0');
   sfx.hurt();
   if (player.hp <= 0) {
     player.hp = 0;
@@ -1080,52 +1319,63 @@ function damagePlayer(amount) {
 // ============================================================
 function spawnDirector(dt) {
   const t = game.time;
-  // Spawn rate ramps with time. Cap at ~10/s logical
-  let rate = 0.7 + Math.min(t / 30, 9); // 0.7 -> ~10
-  rate *= 1 + Math.min(t / 600, 0.6);
+  // Spawn rate ramps with time, faster than before to fit a 15-min run.
+  let rate = 1.0 + Math.min(t / 12, 14);
+  rate *= 1 + Math.min(t / 240, 0.7);
   game.spawnAcc += rate * dt;
   while (game.spawnAcc >= 1) {
     game.spawnAcc -= 1;
     spawnByTime(t);
   }
-  // Bosses
-  if (!game.bossSpawned[1] && t >= 10 * 60) {
+  // Bosses (compressed for 15-min run)
+  if (!game.bossSpawned[1] && t >= 7 * 60) {
     game.bossSpawned[1] = true;
     spawnEnemyAroundPlayer('bloodletting', 320, 360);
     sfx.boss();
     shakeScreen(16);
   }
-  if (!game.bossSpawned[2] && t >= 22 * 60) {
+  if (!game.bossSpawned[2] && t >= 13 * 60) {
     game.bossSpawned[2] = true;
     spawnEnemyAroundPlayer('moonPresence', 320, 360);
     sfx.boss();
     shakeScreen(20);
   }
-  // Elite cleric beast every ~90s starting at 5:00
-  if (t > 5 * 60) {
-    game.eliteCd = (game.eliteCd || 90) - dt;
+  // Elite cleric beast — first one earlier, recurring faster
+  if (t > 3 * 60) {
+    game.eliteCd -= dt;
     if (game.eliteCd <= 0) {
-      game.eliteCd = Math.max(45, 90 - (t - 300) / 30);
+      game.eliteCd = Math.max(35, 70 - (t - 180) / 25);
       spawnEnemyAroundPlayer('cleric', 380, 460);
     }
   }
-  // Victory check
   if (t >= game.victoryAt && game.running) {
     onVictory();
   }
 }
 
 function spawnByTime(t) {
-  // Selection table by elapsed time
+  // Selection table by elapsed time. Plague rats arrive in clumps.
   let table;
-  if (t < 90) table = ['townsfolk'];
-  else if (t < 240) table = ['townsfolk', 'townsfolk', 'scourge'];
-  else if (t < 420) table = ['townsfolk', 'scourge', 'scourge', 'crow'];
-  else if (t < 600) table = ['scourge', 'crow', 'bloodlicker', 'townsfolk'];
-  else if (t < 900) table = ['scourge', 'crow', 'bloodlicker', 'scourge'];
-  else table = ['scourge', 'crow', 'bloodlicker', 'crow', 'scourge'];
+  if (t < 60)        table = ['townsfolk'];
+  else if (t < 150)  table = ['townsfolk', 'townsfolk', 'scourge'];
+  else if (t < 240)  table = ['townsfolk', 'scourge', 'scourge', 'rats'];
+  else if (t < 360)  table = ['scourge', 'crow', 'rats', 'brickTroll'];
+  else if (t < 480)  table = ['scourge', 'crow', 'bloodlicker', 'brickTroll', 'rats'];
+  else if (t < 600)  table = ['crow', 'bloodlicker', 'brickTroll', 'scourge', 'rats'];
+  else               table = ['scourge', 'bloodlicker', 'brickTroll', 'rats', 'crow', 'scourge'];
   const id = pick(table);
-  // Spawn just outside the visible area
+  if (id === 'rats') {
+    // swarm: 4-6 rats arriving together
+    const a = Math.random() * TAU;
+    const r = Math.max(W, H) * 0.62 + rand(40, 100);
+    const cx = player.x + Math.cos(a) * r;
+    const cy = player.y + Math.sin(a) * r;
+    const n = randi(4, 7);
+    for (let i = 0; i < n; i++) {
+      spawnEnemy('plagueRat', cx + rand(-30, 30), cy + rand(-30, 30));
+    }
+    return;
+  }
   const a = Math.random() * TAU;
   const r = Math.max(W, H) * 0.62 + rand(20, 80);
   spawnEnemy(id, player.x + Math.cos(a) * r, player.y + Math.sin(a) * r);
@@ -1144,9 +1394,55 @@ function update(dt) {
   updateEnemies(dt);
   updatePickups(dt);
   updateParticles(dt);
+  updateLanterns(dt);
+  mergeGems(dt);
   spawnDirector(dt);
   cam.x = lerp(cam.x, player.x, 0.18);
   cam.y = lerp(cam.y, player.y, 0.18);
+}
+
+function mergeGems(dt) {
+  game.gemMergeCd -= dt;
+  if (game.gemMergeCd > 0) return;
+  game.gemMergeCd = 0.6;
+  if (pickups.length < 80) return;
+
+  function tryMerge(type, upType) {
+    const candidates = [];
+    for (const p of pickups) if (p.type === type && !p.attracted) candidates.push(p);
+    if (candidates.length < 5) return;
+    const used = new Set();
+    const merges = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const a = candidates[i];
+      if (used.has(a)) continue;
+      const cluster = [a];
+      for (let j = i + 1; j < candidates.length && cluster.length < 5; j++) {
+        const b = candidates[j];
+        if (used.has(b)) continue;
+        if (dist2(a.x, a.y, b.x, b.y) < 90 * 90) cluster.push(b);
+      }
+      if (cluster.length === 5) {
+        for (const c of cluster) used.add(c);
+        merges.push(cluster);
+      }
+    }
+    if (merges.length === 0) return;
+    // Drop merged pickups in a single pass
+    for (let k = pickups.length - 1; k >= 0; k--) {
+      if (used.has(pickups[k])) pickups.splice(k, 1);
+    }
+    for (const cluster of merges) {
+      let cx = 0, cy = 0;
+      for (const c of cluster) { cx += c.x; cy += c.y; }
+      cx /= cluster.length; cy /= cluster.length;
+      spawnPickup(upType, cx, cy);
+      emitSpark(cx, cy, 6, PICKUP_TYPES[upType].glow);
+    }
+  }
+
+  tryMerge('echoSmall', 'echoMed');
+  tryMerge('echoMed', 'echoLarge');
 }
 
 function updatePlayer(dt) {
@@ -1237,6 +1533,15 @@ function updateAoes(dt) {
         }
       }
     }
+    // flicker particles (must run in update so they pause cleanly)
+    if (a.kind === 'fire' && Math.random() < 0.6) {
+      const ang = Math.random() * TAU;
+      const r = Math.random() * a.r;
+      particles.push({ type: 'spark',
+        x: a.x + Math.cos(ang) * r, y: a.y + Math.sin(ang) * r,
+        vx: rand(-10, 10), vy: rand(-50, -20),
+        life: 0.3, max: 0.3, size: 1.5, color: '#ff8030' });
+    }
   }
 }
 
@@ -1245,8 +1550,33 @@ function updateEnemyShots(dt) {
     const s = enemyShots[i];
     s.x += s.vx * dt; s.y += s.vy * dt;
     s.life -= dt;
-    if (dist2(s.x, s.y, player.x, player.y) < (10 + s.r) * (10 + s.r)) {
-      damagePlayer(s.dmg);
+    // Shield catches bullets at a wider radius than the player body.
+    const shield = shieldState();
+    const catchR = shield ? 26 : (10 + s.r);
+    if (dist2(s.x, s.y, player.x, player.y) < catchR * catchR) {
+      if (shield) {
+        emitSpark(s.x, s.y, 8, '#f5e6c0');
+        sfx.swing();
+        if (shield.deflect) {
+          // turn the bullet into a player projectile aimed back at the nearest enemy
+          const tgt = nearestEnemy(s.x, s.y, 500);
+          if (tgt) {
+            const a = angleTo(s.x, s.y, tgt.x, tgt.y);
+            const sp = 360;
+            projectiles.push({
+              kind: 'bullet',
+              x: s.x, y: s.y,
+              vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+              life: 1.4, dmg: s.dmg * 2.5,
+              pierce: 0, hitSet: new Set(),
+              r: 4, color: '#f5e6c0',
+              trail: [], angle: a,
+            });
+          }
+        }
+      } else {
+        damagePlayer(s.dmg);
+      }
       enemyShots.splice(i, 1);
       continue;
     }
@@ -1482,6 +1812,7 @@ function render() {
 
   drawSplats();
   drawAoes();
+  drawLanterns();
   drawPickups();
   drawEnemies();
   drawPlayer();
@@ -1494,7 +1825,99 @@ function render() {
   ctx.restore();
   drawFog();
   drawVignette();
+  drawLanternWaypoints();
   drawGrain();
+}
+
+function drawLanterns() {
+  for (const l of lanterns) {
+    const flicker = 1 + Math.sin(l.pulse * 8 + l.bornAt * 3) * 0.08;
+    // beacon halo
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const grad = ctx.createRadialGradient(l.x, l.y - 8, 0, l.x, l.y - 8, 110 * flicker);
+    grad.addColorStop(0, 'rgba(255,210,120,0.45)');
+    grad.addColorStop(0.4, 'rgba(245,180,90,0.18)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(l.x, l.y - 8, 110 * flicker, 0, TAU); ctx.fill();
+    ctx.restore();
+
+    // contact shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath(); ctx.ellipse(l.x, l.y + 18, 12, 4, 0, 0, TAU); ctx.fill();
+
+    // post
+    ctx.fillStyle = '#1a0e0a';
+    ctx.fillRect(l.x - 1.5, l.y - 4, 3, 22);
+    ctx.strokeStyle = '#5a3a2a'; ctx.lineWidth = 1;
+    ctx.strokeRect(l.x - 1.5, l.y - 4, 3, 22);
+
+    // lamp body
+    ctx.beginPath();
+    ctx.rect(l.x - 7, l.y - 18, 14, 16);
+    ctx.fillStyle = '#3a2818';
+    ctx.fill();
+    ctx.strokeStyle = '#a07a48'; ctx.lineWidth = 1.4;
+    ctx.stroke();
+    // glass panes
+    ctx.strokeStyle = '#7a5a40';
+    ctx.beginPath();
+    ctx.moveTo(l.x, l.y - 18); ctx.lineTo(l.x, l.y - 2);
+    ctx.moveTo(l.x - 7, l.y - 10); ctx.lineTo(l.x + 7, l.y - 10);
+    ctx.stroke();
+    // flame
+    ctx.fillStyle = `rgba(255,210,${Math.floor(120 + Math.sin(l.pulse * 12) * 30)},0.9)`;
+    ctx.beginPath(); ctx.ellipse(l.x, l.y - 9, 3 * flicker, 5 * flicker, 0, 0, TAU); ctx.fill();
+    ctx.shadowColor = '#f5d98a'; ctx.shadowBlur = 12;
+    ctx.fillStyle = '#fff5cc';
+    ctx.beginPath(); ctx.ellipse(l.x, l.y - 9, 1 * flicker, 2 * flicker, 0, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // expiry warning
+    const tLeft = (l.expires - game.time) / LANTERN_LIFETIME;
+    if (tLeft < 0.3 && Math.floor(game.time * 6) % 2) {
+      ctx.fillStyle = 'rgba(255,80,80,0.6)';
+      ctx.fillRect(l.x - 8, l.y - 22, 16, 2);
+    }
+  }
+}
+
+function drawLanternWaypoints() {
+  for (const l of lanterns) {
+    const wx = (l.x - cam.x) + W / 2;
+    const wy = (l.y - cam.y) + H / 2;
+    const margin = 56;
+    if (wx > margin && wx < W - margin && wy > margin && wy < H - margin) continue;
+    const dx = l.x - player.x, dy = l.y - player.y;
+    const ang = Math.atan2(dy, dx);
+    const sx = clamp(wx, margin, W - margin);
+    const sy = clamp(wy, margin, H - margin);
+    const pulse = 0.7 + Math.sin(game.time * 4) * 0.3;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(ang);
+    ctx.fillStyle = `rgba(245,217,138,${pulse})`;
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(-7, -8);
+    ctx.lineTo(-3, 0);
+    ctx.lineTo(-7, 8);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+    // distance label
+    ctx.font = '700 10px Cinzel, serif';
+    ctx.textAlign = 'center';
+    const text = Math.round(Math.hypot(dx, dy) / 10) + 'm';
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+    ctx.fillStyle = '#f5d98a';
+    ctx.strokeText(text, sx, sy + 22);
+    ctx.fillText(text, sx, sy + 22);
+    ctx.textAlign = 'left';
+  }
 }
 
 function drawSplats() {
@@ -1527,15 +1950,6 @@ function drawAoes() {
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, TAU); ctx.fill();
       ctx.restore();
-      // flicker dots
-      if (Math.random() < 0.6) {
-        const ang = Math.random() * TAU;
-        const r = Math.random() * a.r;
-        particles.push({ type: 'spark',
-          x: a.x + Math.cos(ang) * r, y: a.y + Math.sin(ang) * r,
-          vx: rand(-10, 10), vy: rand(-50, -20),
-          life: 0.3, max: 0.3, size: 1.5, color: '#ff8030' });
-      }
     }
   }
 }
@@ -1750,6 +2164,60 @@ function drawEnemy(e) {
       ctx.fillRect(-e.r * 0.18, -e.r * 0.62, 2, 2);
       ctx.fillRect(e.r * 0.06, -e.r * 0.62, 2, 2);
     }
+  } else if (e.def.shape === 'troll') {
+    // hulking body
+    ctx.beginPath();
+    ctx.rect(-e.r * 0.7, -e.r * 0.3, e.r * 1.4, e.r * 1.5);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    // shoulders / boulder pack
+    ctx.beginPath();
+    ctx.moveTo(-e.r * 0.7, -e.r * 0.3);
+    ctx.lineTo(-e.r * 0.95, -e.r * 0.6);
+    ctx.lineTo(-e.r * 0.5, -e.r * 0.75);
+    ctx.lineTo(e.r * 0.5, -e.r * 0.75);
+    ctx.lineTo(e.r * 0.95, -e.r * 0.6);
+    ctx.lineTo(e.r * 0.7, -e.r * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = fillAcc; ctx.fill(); ctx.stroke();
+    // small head
+    ctx.beginPath(); ctx.arc(0, -e.r * 0.5, e.r * 0.3, 0, TAU);
+    ctx.fillStyle = flash ? '#fff' : '#1a0e08'; ctx.fill(); ctx.stroke();
+    // brick fragments embedded
+    ctx.fillStyle = fillAcc;
+    ctx.fillRect(-e.r * 0.45, e.r * 0.35, 5, 5);
+    ctx.fillRect(e.r * 0.25, e.r * 0.55, 4, 4);
+    ctx.strokeRect(-e.r * 0.45, e.r * 0.35, 5, 5);
+    ctx.strokeRect(e.r * 0.25, e.r * 0.55, 4, 4);
+    if (!flash) {
+      ctx.shadowColor = e.def.eye; ctx.shadowBlur = 5;
+      ctx.fillStyle = e.def.eye;
+      ctx.fillRect(-e.r * 0.16, -e.r * 0.55, 2.5, 2.5);
+      ctx.fillRect(e.r * 0.04, -e.r * 0.55, 2.5, 2.5);
+      ctx.shadowBlur = 0;
+    }
+  } else if (e.def.shape === 'rat') {
+    // long horizontal body
+    ctx.beginPath(); ctx.ellipse(0, 0, e.r * 1.4, e.r * 0.6, 0, 0, TAU);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    // head
+    ctx.beginPath(); ctx.arc(e.r * 0.85, -e.r * 0.05, e.r * 0.45, 0, TAU);
+    ctx.fillStyle = fillAcc; ctx.fill(); ctx.stroke();
+    // ear
+    ctx.beginPath(); ctx.arc(e.r * 0.6, -e.r * 0.55, e.r * 0.22, 0, TAU);
+    ctx.fillStyle = fillBody; ctx.fill(); ctx.stroke();
+    // tail (curving line)
+    ctx.strokeStyle = fillBody;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-e.r * 1.2, e.r * 0.05);
+    ctx.bezierCurveTo(-e.r * 1.7, -e.r * 0.5, -e.r * 2.0, e.r * 0.6, -e.r * 2.3, 0);
+    ctx.stroke();
+    if (!flash) {
+      ctx.shadowColor = e.def.eye; ctx.shadowBlur = 4;
+      ctx.fillStyle = e.def.eye;
+      ctx.fillRect(e.r * 1.05, -e.r * 0.18, 2, 2);
+      ctx.shadowBlur = 0;
+    }
   } else if (e.def.shape === 'lurker') {
     // pulsing body
     const pulse = 1 + Math.sin(game.time * 6 + e.bornAt * 3) * 0.06;
@@ -1954,7 +2422,39 @@ const ui = {
   vLevel: document.getElementById('vLevel'),
   vKills: document.getElementById('vKills'),
   vEcho: document.getElementById('vEcho'),
+  dreamPanel: document.getElementById('dreamPanel'),
+  dreamEchoes: document.getElementById('dreamEchoes'),
+  dreamPerks: document.getElementById('dreamPerks'),
 };
+
+function renderDreamPanel() {
+  if (!ui.dreamEchoes) return;
+  ui.dreamEchoes.textContent = meta.totalEchoes;
+  const html = Object.entries(META_DEFS).map(([id, def]) => {
+    const lv = meta.perks[id];
+    const maxed = lv >= def.max;
+    const cost = maxed ? null : perkCost(id);
+    const canAfford = !maxed && meta.totalEchoes >= cost;
+    const pips = Array.from({ length: def.max }, (_, i) =>
+      `<span class="dream-perk-pip${i < lv ? ' filled' : ''}"></span>`).join('');
+    return `<button class="dream-perk${canAfford ? ' affordable' : ''}" data-id="${id}" ${maxed || !canAfford ? 'disabled' : ''}>
+      <div class="dream-perk-icon">${def.icon}</div>
+      <div class="dream-perk-info">
+        <div class="dream-perk-name">${def.name}</div>
+        <div class="dream-perk-desc">${def.desc}</div>
+        <div class="dream-perk-pips">${pips}</div>
+      </div>
+      <div class="dream-perk-cost">${maxed ? 'MAX' : '◈ ' + cost}</div>
+    </button>`;
+  }).join('');
+  ui.dreamPerks.innerHTML = html;
+  ui.dreamPerks.querySelectorAll('.dream-perk').forEach(b => {
+    b.addEventListener('click', () => buyPerk(b.dataset.id));
+  });
+}
+
+loadMeta();
+renderDreamPanel();
 
 function updateHud() {
   if (!game.running) return;
@@ -1994,9 +2494,17 @@ function updateHud() {
 function showLevelUp() {
   if (upgradeQueue.length === 0) { levelUpOpen = false; return; }
   upgradeQueue.shift();
+  const choices = buildUpgradeChoices();
+  // When everything is maxed, the only choice is the fallback heal —
+  // auto-apply it without breaking flow with a modal.
+  if (choices.length === 1 && choices[0].kind === 'heal') {
+    applyUpgrade(choices[0]);
+    if (upgradeQueue.length > 0) setTimeout(showLevelUp, 50);
+    else { levelUpOpen = false; game.paused = false; }
+    return;
+  }
   levelUpOpen = true;
   game.paused = true;
-  const choices = buildUpgradeChoices();
   renderUpgradeChoices(choices);
   ui.levelUp.classList.remove('hidden');
 }
@@ -2069,6 +2577,7 @@ ui.startBtn.addEventListener('click', () => {
 function startGame(hunterId) {
   game.hunter = hunterId;
   resetPlayer(hunterId);
+  applyMetaPerks();
   recomputeStats();
   game.running = true;
   game.paused = false;
@@ -2077,7 +2586,9 @@ function startGame(hunterId) {
   game.echoes = 0;
   game.spawnAcc = 0;
   game.bossSpawned = { 1: false, 2: false };
-  game.eliteCd = 90;
+  game.eliteCd = 60;
+  game.lanternCd = 35;
+  game.gemMergeCd = 0;
   enemies.length = 0;
   projectiles.length = 0;
   enemyShots.length = 0;
@@ -2086,6 +2597,7 @@ function startGame(hunterId) {
   damageNumbers.length = 0;
   pickups.length = 0;
   splats.length = 0;
+  lanterns.length = 0;
   upgradeQueue.length = 0;
   levelUpOpen = false;
   cam.x = 0; cam.y = 0;
@@ -2123,6 +2635,7 @@ ui.quitBtn.addEventListener('click', () => {
 
 function onPlayerDeath() {
   game.running = false;
+  awardEchoes();
   sfx.death();
   ui.goTime.textContent = fmtTime(game.time);
   ui.goLevel.textContent = player.level;
@@ -2133,11 +2646,13 @@ function onPlayerDeath() {
 }
 ui.retryBtn.addEventListener('click', () => {
   ui.gameOver.classList.add('hidden');
+  renderDreamPanel();
   ui.title.classList.remove('hidden');
 });
 
 function onVictory() {
   game.running = false;
+  awardEchoes();
   sfx.victory();
   ui.vTime.textContent = fmtTime(game.time);
   ui.vLevel.textContent = player.level;
@@ -2148,6 +2663,7 @@ function onVictory() {
 }
 ui.victoryBtn.addEventListener('click', () => {
   ui.victory.classList.add('hidden');
+  renderDreamPanel();
   ui.title.classList.remove('hidden');
 });
 
