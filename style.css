@@ -402,6 +402,16 @@ body {
 
 /* Hunter selection cards */
 
+.hunters-label {
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(196, 30, 58, 0.3), 0 1px 2px #000;
+  margin-top: 4px;
+}
+
 .hunters {
   display: grid;
   grid-template-columns: 1fr;
