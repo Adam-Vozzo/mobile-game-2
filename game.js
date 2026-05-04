@@ -29,14 +29,25 @@ let DPR = 1;
 let W = 0, H = 0;
 
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth;
-  H = window.innerHeight;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  // Cap the effective canvas area so big monitors don't pay 4K-retina rates
+  // for what is otherwise a small game. ~2.4M pixels is enough for a crisp
+  // image without melting fill rate.
+  const wantDPR = Math.min(window.devicePixelRatio || 1, 2);
+  const maxPixels = 2_400_000;
+  const naturalPixels = w * h * wantDPR * wantDPR;
+  DPR = naturalPixels <= maxPixels
+    ? wantDPR
+    : Math.max(1, Math.sqrt(maxPixels / (w * h)));
+  W = w;
+  H = h;
   canvas.width = Math.floor(W * DPR);
   canvas.height = Math.floor(H * DPR);
   canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  vignetteCache = null; // rebuild lazily on next draw
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 200));
@@ -331,30 +342,42 @@ function drawWorldBg() {
   ctx.restore();
 }
 
-function drawVignette() {
-  const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.78);
+// Vignette is static — bake to an offscreen canvas, blit each frame.
+let vignetteCache = null;
+function buildVignette() {
+  vignetteCache = document.createElement('canvas');
+  vignetteCache.width = W;
+  vignetteCache.height = H;
+  const vctx = vignetteCache.getContext('2d');
+  const grad = vctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.78);
   grad.addColorStop(0, 'rgba(0,0,0,0)');
   grad.addColorStop(0.55, 'rgba(0,0,0,0.22)');
   grad.addColorStop(1, 'rgba(0,0,0,0.78)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
+  vctx.fillStyle = grad;
+  vctx.fillRect(0, 0, W, H);
+}
+function drawVignette() {
+  if (!vignetteCache || vignetteCache.width !== W || vignetteCache.height !== H) {
+    buildVignette();
+  }
+  ctx.drawImage(vignetteCache, 0, 0);
 }
 
 let fogTime = 0;
 function drawFog() {
+  // Single soft drift instead of three layered passes — saves the most
+  // expensive per-frame work on large screens. Visually almost identical.
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  for (let i = 0; i < 3; i++) {
-    const t = fogTime * (0.04 + i * 0.025);
-    const ox = Math.sin(t) * 80 + i * 70;
-    const oy = Math.cos(t * 0.7) * 60 + i * 40;
-    const grad = ctx.createRadialGradient(W * 0.5 + ox, H * 0.5 + oy, 50, W * 0.5 + ox, H * 0.5 + oy, Math.max(W, H) * 0.7);
-    grad.addColorStop(0, 'rgba(40,30,38,0.05)');
-    grad.addColorStop(0.5, 'rgba(30,20,28,0.025)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-  }
+  const t = fogTime * 0.05;
+  const ox = Math.sin(t) * 80;
+  const oy = Math.cos(t * 0.7) * 60;
+  const grad = ctx.createRadialGradient(W * 0.5 + ox, H * 0.5 + oy, 50, W * 0.5 + ox, H * 0.5 + oy, Math.max(W, H) * 0.7);
+  grad.addColorStop(0, 'rgba(40,30,38,0.10)');
+  grad.addColorStop(0.5, 'rgba(30,20,28,0.05)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
 
