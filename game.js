@@ -628,8 +628,11 @@ function spawnEnemy(typeId, x, y, mods = {}) {
     if (Math.random() < baseChance * typeMul) promoted = true;
   }
   const eliteScale = promoted ? { hp: 5.0, dmg: 1.6, r: 1.3, sp: 1.08 } : { hp: 1, dmg: 1, r: 1, sp: 1 };
-  // Time-based HP ramp up from 0.4 to 0.6 per second so the late game stays threatening.
-  const baseHp = (def.hp + (game.time * 0.6)) * (mods.hpMul || 1) * eliteScale.hp;
+  // Early grace period — first 30s the rabble is fragile so the hunter can
+  // settle in. After that, the time scaling kicks in on top of full base HP.
+  const earlyMul = Math.min(1, 0.4 + game.time / 50);
+  const timeBonus = Math.max(0, game.time - 20) * 0.6;
+  const baseHp = (def.hp + timeBonus) * (mods.hpMul || 1) * eliteScale.hp * earlyMul;
   enemies.push({
     type: typeId, def,
     x, y, vx: 0, vy: 0,
